@@ -1,11 +1,8 @@
 # backend/collectors/market_collector.py
 import logging
-import httpx
 from collectors.fmp_collector import FMPCollector
-from config import get_settings
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 class MarketCollector:
@@ -13,28 +10,25 @@ class MarketCollector:
         self.fmp = FMPCollector()
 
     async def get_gold_price(self) -> dict:
-        # 1. Yahoo Finance GC=F (gold futures, no auth required)
+        # 1. Latest price from Supabase gold_prices table (seeded by agent via FMP/cTrader MCP)
         try:
-            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-                r = await client.get(
-                    "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                if r.status_code == 200:
-                    meta = r.json().get("chart", {}).get("result", [{}])[0].get("meta", {})
-                    price = meta.get("regularMarketPrice") or meta.get("previousClose") or 0
-                    if price and float(price) > 500:
-                        logger.info(f"Gold price from Yahoo Finance: ${price}")
-                        return {"symbol": "XAUUSD", "price": float(price), "source": "yahoo"}
+            from services.supabase_service import get_supabase
+            sb = get_supabase()
+            row = sb.table("gold_prices").select("price,source,timestamp").order("timestamp", desc=True).limit(1).execute()
+            if row.data:
+                price = float(row.data[0]["price"])
+                if price > 500:
+                    logger.info(f"Gold price from Supabase: ${price}")
+                    return {"symbol": "XAUUSD", "price": price, "source": row.data[0].get("source", "db")}
         except Exception as e:
-            logger.warning(f"Yahoo Finance gold price failed: {e}")
+            logger.warning(f"Supabase gold price read failed: {e}")
 
-        # 2. Fallback to FMP cache / Supabase
+        # 2. Fallback to FMP cache in Supabase cache table
         cached = await self.fmp.get_gold_price()
         if cached.get("price", 0) > 500:
             return cached
 
-        logger.error("All gold price sources failed — returning 0")
+        logger.error("Gold price unavailable — no data in Supabase or FMP cache")
         return {"symbol": "XAUUSD", "price": 0, "source": "unavailable"}
 
     async def get_yield_data(self) -> dict:
