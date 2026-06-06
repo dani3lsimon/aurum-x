@@ -78,20 +78,49 @@ export function useForecast() {
     }
   }, [lastMessage])
 
-  // Manual refresh trigger
+  // Manual refresh trigger — polls for result so button never stays stuck
   const triggerManualCycle = useCallback(async () => {
     if (isRefreshing) return
     setIsRefreshing(true)
+    const triggerTime = Date.now()
+
     try {
       const res = await fetch(`${BACKEND}/forecast/trigger`, { method: 'POST' })
-      if (!res.ok) {
-        console.error('[AURUM-X] Trigger failed:', res.status)
-        setIsRefreshing(false)
-      }
-    } catch (e) {
-      console.error('[AURUM-X] Trigger error:', e)
+      if (!res.ok) { setIsRefreshing(false); return }
+    } catch {
       setIsRefreshing(false)
+      return
     }
+
+    // Poll every 3s until a forecast newer than trigger time arrives (max 120s)
+    let attempts = 0
+    const poll = setInterval(async () => {
+      attempts++
+      if (attempts > 40) {
+        clearInterval(poll)
+        setIsRefreshing(false)
+        return
+      }
+      try {
+        const r = await fetch(`${BACKEND}/forecast/latest`)
+        if (!r.ok) return
+        const f = await r.json()
+        const fTime = f?.timestamp ? new Date(f.timestamp).getTime() : 0
+        if (fTime > triggerTime) {
+          clearInterval(poll)
+          setForecast(f)
+          const [aRes, alRes, sRes] = await Promise.all([
+            fetch(`${BACKEND}/agents/scores`),
+            fetch(`${BACKEND}/alerts/recent`),
+            fetch(`${BACKEND}/scenarios/latest`),
+          ])
+          if (aRes.ok)  setAgentScores(await aRes.json())
+          if (alRes.ok) setAlerts(await alRes.json())
+          if (sRes.ok)  setScenarios(await sRes.json())
+          setIsRefreshing(false)
+        }
+      } catch { /* keep polling */ }
+    }, 3000)
   }, [isRefreshing])
 
   return {
