@@ -1,5 +1,4 @@
 # backend/engines/bayesian_engine.py
-import numpy as np
 from typing import Dict, List
 from datetime import datetime
 import logging
