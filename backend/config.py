@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     ibkr_port: int = 7497
     ibkr_client_id: int = 1
 
-    # Infrastructure
-    redis_url: str = "redis://localhost:6379"
+    # Cache via Supabase cache table — Redis not required
+    redis_url: str = ""
 
     # Alert thresholds
     probability_alert_threshold: float = 10.0

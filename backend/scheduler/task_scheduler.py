@@ -65,6 +65,9 @@ class AurumScheduler:
         # FMP calendar every 4 hours
         self.scheduler.add_job(self._run_fmp_calendar_sync, IntervalTrigger(hours=4),
                                id="fmp_calendar", replace_existing=True)
+        # Cache cleanup — delete expired Supabase cache rows every hour
+        self.scheduler.add_job(self._run_cache_cleanup, IntervalTrigger(hours=1),
+                               id="cache_cleanup", replace_existing=True)
 
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
@@ -212,6 +215,10 @@ class AurumScheduler:
                     await scenario_engine.generate(forecast, scores)
             except Exception as e:
                 logger.error(f"Scenario engine failed: {e}")
+
+    async def _run_cache_cleanup(self):
+        from services.redis_service import cleanup_expired
+        await cleanup_expired()
 
     async def _run_fmp_calendar_sync(self):
         try:
