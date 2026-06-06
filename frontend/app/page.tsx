@@ -61,12 +61,12 @@ export default function Page() {
             AURUM<span style={{ color: '#ff4400' }}>-X</span>
           </div>
           <div className="version-badge">v2.0</div>
-          <div className="hidden sm:block text-xs text-[var(--text-muted)]">GOLD MACRO INTELLIGENCE</div>
+          <div className="hidden sm:block text-[var(--text-muted)]" style={{ fontSize: '0.75rem' }}>GOLD MACRO INTELLIGENCE</div>
         </div>
 
         {/* Centre: gold price hero */}
         <div className="flex flex-col items-center">
-          <div className="text-xs text-[var(--text-label)] mb-0.5">XAUUSD SPOT</div>
+          <div className="text-[var(--text-label)] mb-0.5" style={{ fontSize: '0.75rem' }}>XAUUSD SPOT</div>
           <div className="hero-number text-2xl sm:text-3xl">
             {price > 0
               ? `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -77,8 +77,8 @@ export default function Page() {
         {/* Right: regime + pills + REFRESH button + live dot */}
         <div className="flex items-center gap-3">
           <div className="hidden md:flex flex-col items-end gap-0.5">
-            <div className="text-xs text-[var(--text-label)]">REGIME</div>
-            <div className="text-xs font-bold text-[#ff4400]">{regime.replace(/_/g, ' ')}</div>
+            <div className="text-[var(--text-label)]" style={{ fontSize: '0.72rem' }}>REGIME</div>
+            <div className="font-bold text-[#ff4400]" style={{ fontSize: '0.75rem' }}>{regime.replace(/_/g, ' ')}</div>
           </div>
           <div className="hidden md:flex gap-1.5">
             <span className="status-pill bull">B {bull.toFixed(0)}%</span>
@@ -134,15 +134,19 @@ export default function Page() {
         flex: 1, display: 'grid', gap: '1px',
         background: 'var(--border-subtle)',
         gridTemplateColumns: 'repeat(12, 1fr)',
+        gridTemplateRows: 'auto auto auto',
+        alignItems: 'stretch',
       }}>
 
-        <div style={{ gridColumn: 'span 8', background: '#06070b' }}>
+        {/* Row 1: Chart + Probability */}
+        <div style={{ gridColumn: 'span 8', background: '#06070b', minHeight: '360px' }}>
           <ForecastChart forecast={forecast} />
         </div>
         <div style={{ gridColumn: 'span 4', background: '#06070b' }}>
           <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} />
         </div>
 
+        {/* Row 2: Agents + Regime + Ranges */}
         <div style={{ gridColumn: 'span 5', background: '#06070b' }}>
           <AgentScorePanel scores={agentScores} />
         </div>
@@ -153,6 +157,7 @@ export default function Page() {
           <ForecastRanges forecast={forecast} />
         </div>
 
+        {/* Row 3: Scenarios + Tail Risk + Alerts */}
         <div style={{ gridColumn: 'span 5', background: '#06070b' }}>
           <ScenarioTree scenarios={scenarios} />
         </div>
