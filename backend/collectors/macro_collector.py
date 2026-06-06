@@ -68,6 +68,7 @@ class MacroCollector:
         fed_series = {
             "FED_FUNDS":         "FEDFUNDS",
             "FED_BALANCE_SHEET": "WALCL",
+            "M2":                "M2SL",
             "SOFR":              "SOFR",
             "INFLATION_EXP_5Y":  "T5YIE",
             "REAL_YIELD_10Y":    "DFII10",
