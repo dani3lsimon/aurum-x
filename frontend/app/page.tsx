@@ -136,6 +136,8 @@ export default function Page() {
         gridTemplateColumns: 'repeat(12, 1fr)',
         gridTemplateRows: 'auto auto auto',
         alignItems: 'stretch',
+        margin: '8px 12px 12px',
+        border: '1px solid var(--border-subtle)',
       }}>
 
         {/* Row 1: Chart + Probability */}

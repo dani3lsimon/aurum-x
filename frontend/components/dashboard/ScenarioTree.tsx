@@ -39,7 +39,7 @@ export default function ScenarioTree({ scenarios }: Props) {
                 <div className="text-lg font-bold" style={{ color }}>{sc.probability}%</div>
               </div>
 
-              <div className="text-xs text-white font-medium">{sc.scenario_name}</div>
+              <div style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>{sc.scenario_name}</div>
 
               {/* Probability bar */}
               <div className="prob-bar">
@@ -49,19 +49,19 @@ export default function ScenarioTree({ scenarios }: Props) {
               {/* Target & drivers */}
               <div className="flex justify-between items-start gap-2">
                 {sc.expected_gold_target > 0 && (
-                  <div className="text-xs text-[var(--text-muted)]">
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
                     Target: <span style={{ color }}>${sc.expected_gold_target.toLocaleString()}</span>
                   </div>
                 )}
                 {sc.confidence > 0 && (
-                  <div className="text-xs text-[var(--text-muted)]">Conf {sc.confidence}%</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Conf {sc.confidence}%</div>
                 )}
               </div>
 
               {sc.key_drivers && sc.key_drivers.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {sc.key_drivers.slice(0, 3).map((d, di) => (
-                    <span key={di} className="text-xs px-1.5 py-0.5" style={{ background: `${color}12`, color: `${color}cc`, fontSize: '0.5rem', border: `1px solid ${color}20` }}>
+                    <span key={di} style={{ background: `${color}12`, color: `${color}cc`, fontSize: '0.68rem', border: `1px solid ${color}25`, padding: '2px 8px', letterSpacing: '0.06em' }}>
                       {d}
                     </span>
                   ))}
