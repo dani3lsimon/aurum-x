@@ -1,0 +1,182 @@
+# backend/services/supabase_service.py
+from supabase import create_client, Client
+from config import get_settings
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+_supabase: Client = None
+
+
+def get_supabase() -> Client:
+    global _supabase
+    if _supabase is None:
+        _supabase = create_client(
+            settings.supabase_url,
+            settings.supabase_service_role_key
+        )
+    return _supabase
+
+
+# ── Forecasts ──────────────────────────────────────────────────────────────
+
+async def insert_forecast(forecast_data: dict) -> dict:
+    sb = get_supabase()
+    result = sb.table("forecasts").insert(forecast_data).execute()
+    return result.data[0] if result.data else None
+
+
+async def get_latest_forecast() -> dict:
+    sb = get_supabase()
+    result = (
+        sb.table("forecasts")
+        .select("*")
+        .order("timestamp", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_forecast_history(hours: int = 48) -> list:
+    sb = get_supabase()
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    result = (
+        sb.table("forecasts")
+        .select("*")
+        .gte("timestamp", cutoff)
+        .order("timestamp", desc=True)
+        .execute()
+    )
+    return result.data
+
+
+# ── Agent Scores ───────────────────────────────────────────────────────────
+
+async def insert_agent_score(score_data: dict) -> dict:
+    sb = get_supabase()
+    result = sb.table("agent_scores").insert(score_data).execute()
+    return result.data[0] if result.data else None
+
+
+async def get_latest_agent_scores() -> list:
+    sb = get_supabase()
+    result = (
+        sb.table("agent_scores")
+        .select("*")
+        .order("timestamp", desc=True)
+        .limit(10)
+        .execute()
+    )
+    return result.data
+
+
+# ── Regime ─────────────────────────────────────────────────────────────────
+
+async def insert_regime(regime_data: dict) -> dict:
+    sb = get_supabase()
+    result = sb.table("regime_history").insert(regime_data).execute()
+    return result.data[0] if result.data else None
+
+
+# ── Alerts ─────────────────────────────────────────────────────────────────
+
+async def insert_alert(alert_data: dict) -> dict:
+    sb = get_supabase()
+    result = sb.table("alerts").insert(alert_data).execute()
+    return result.data[0] if result.data else None
+
+
+# ── News ───────────────────────────────────────────────────────────────────
+
+async def get_recent_news(limit: int = 20) -> list:
+    sb = get_supabase()
+    result = (
+        sb.table("news_articles")
+        .select("*")
+        .order("published_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data
+
+
+async def insert_news_articles(articles: list) -> int:
+    if not articles:
+        return 0
+    sb = get_supabase()
+    result = sb.table("news_articles").upsert(articles, on_conflict="url").execute()
+    return len(result.data) if result.data else 0
+
+
+# ── Economic Releases ──────────────────────────────────────────────────────
+
+async def insert_economic_releases(releases: list) -> int:
+    if not releases:
+        return 0
+    sb = get_supabase()
+    result = (
+        sb.table("economic_releases")
+        .upsert(releases, on_conflict="event,release_date")
+        .execute()
+    )
+    return len(result.data) if result.data else 0
+
+
+async def get_upcoming_releases(days: int = 7) -> list:
+    sb = get_supabase()
+    now = datetime.utcnow().isoformat()
+    future = (datetime.utcnow() + timedelta(days=days)).isoformat()
+    result = (
+        sb.table("economic_releases")
+        .select("*")
+        .gte("release_date", now)
+        .lte("release_date", future)
+        .order("release_date")
+        .execute()
+    )
+    return result.data
+
+
+async def get_todays_releases() -> list:
+    sb = get_supabase()
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()
+    today_end = datetime.utcnow().replace(hour=23, minute=59, second=59).isoformat()
+    result = (
+        sb.table("economic_releases")
+        .select("*")
+        .gte("release_date", today_start)
+        .lte("release_date", today_end)
+        .order("release_date")
+        .execute()
+    )
+    return result.data
+
+
+# ── Positioning ────────────────────────────────────────────────────────────
+
+async def get_latest_positioning() -> dict:
+    sb = get_supabase()
+    result = (
+        sb.table("cftc_positioning")
+        .select("*")
+        .order("report_date", desc=True)
+        .limit(5)
+        .execute()
+    )
+    return result.data
+
+
+# ── Scenarios ──────────────────────────────────────────────────────────────
+
+async def get_latest_scenarios() -> list:
+    sb = get_supabase()
+    result = (
+        sb.table("scenarios")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(4)
+        .execute()
+    )
+    return result.data

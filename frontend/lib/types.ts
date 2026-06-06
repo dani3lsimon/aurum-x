@@ -1,0 +1,70 @@
+export interface Forecast {
+  id: string
+  timestamp: string
+  gold_price: number
+  bullish_prob: number
+  bearish_prob: number
+  neutral_prob: number
+  confidence_score: number
+  forecast_momentum: number
+  macro_regime: string
+  agent_scores: Record<string, number>
+  range_4h_low: number;  range_4h_high: number
+  range_24h_low: number; range_24h_high: number
+  range_1w_low: number;  range_1w_high: number
+  range_1m_low: number;  range_1m_high: number
+  range_1q_low: number;  range_1q_high: number
+  volatility_score: number
+  tail_risk_upside: number
+  tail_risk_downside: number
+  tail_risk_probability: number
+}
+
+export interface AgentScore {
+  agent_name: string
+  score: number
+  confidence: number
+  rationale: string
+  timestamp: string
+  regime: string
+}
+
+export interface Scenario {
+  id: string
+  scenario_label: string
+  scenario_name: string
+  probability: number
+  expected_gold_target: number
+  confidence: number
+  key_drivers: string[]
+  horizon?: string
+}
+
+export interface Alert {
+  id: string
+  timestamp: string
+  alert_type: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  title: string
+  description: string
+  acknowledged: boolean
+}
+
+export interface EconomicRelease {
+  id: string
+  event: string
+  country: string
+  release_date: string
+  actual: number | null
+  forecast: number | null
+  previous: number | null
+  surprise: number | null
+  impact: 'low' | 'medium' | 'high'
+  gold_sensitivity: 'low' | 'medium' | 'high' | 'critical'
+  gold_impact_score: number | null
+}
+
+export interface WSMessage {
+  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change' | 'initial_state' | 'release_alert'
+  data: unknown
+}

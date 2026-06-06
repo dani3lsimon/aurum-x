@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap');
+
+@import "tailwindcss";
+
+/* ── CSS Custom Properties ─────────────────────────────────────────── */
+:root {
+  --accent-primary:      #f00d17;
+  --accent-amber:        #ffb347;
+  --accent-teal:         #2dd4bf;
+  --accent-pink:         #ff4d7a;
+  --text-primary:        #ffffff;
+  --text-muted:          #4a5068;
+  --text-label:          #6b7494;
+  --status-live:         #ff3d3d;
+  --status-online:       #00ff88;
+  --glow-text:           0 0 12px rgba(255,80,0,0.8), 0 0 30px rgba(255,40,0,0.4);
+  --glow-card:           0 0 30px rgba(180,20,0,0.12);
+  --border-subtle:       rgba(240,13,23,0.15);
+  --bg-base:             #06070b;
+  --bg-card:             #0d0f17;
+  --chart-line:          #ff5500;
+}
+
+/* ── Reset & Base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background:     var(--bg-base);
+  color:          #fff;
+  font-family:    'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  overflow-x:     hidden;
+  min-height:     100vh;
+  letter-spacing: 0.02em;
+}
+
+/* ── Scanline overlay ──────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    transparent 0px, transparent 2px,
+    rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Animated dot grid background ─────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: radial-gradient(circle, rgba(240,13,23,0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: gridDrift 20s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Keyframe Animations ───────────────────────────────────────────── */
+@keyframes gridDrift    { from { background-position: 0 0; } to { background-position: 40px 40px; } }
+@keyframes glowPulse    { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+@keyframes countUp      { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+@keyframes probFill     { from { width:0%; } }
+@keyframes barExpand    { from { width:0; } }
+@keyframes cardMount    { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+@keyframes chartDraw    { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0% 0 0); } }
+@keyframes tickerScroll { from { transform:translateY(0); } to { transform:translateY(-50%); } }
+
+/* ── Reusable Design Components ────────────────────────────────────── */
+.aurum-card {
+  background:    var(--bg-card);
+  border:        1px solid var(--border-subtle);
+  border-radius: 0 !important;
+  box-shadow:    var(--glow-card);
+  position:      relative;
+  z-index:       1;
+  animation:     cardMount 0.4s ease-out forwards;
+}
+
+.hero-number {
+  font-family:    'JetBrains Mono', monospace;
+  font-weight:    800;
+  color:          #ff4400;
+  text-shadow:    var(--glow-text);
+  letter-spacing: -0.02em;
+  animation:      countUp 0.8s ease-out forwards;
+}
+
+.section-label {
+  font-size:      0.6rem;
+  letter-spacing: 0.2em;
+  color:          var(--text-label);
+  font-weight:    500;
+  display:        flex;
+  align-items:    center;
+  gap:            6px;
+}
+.section-label::before {
+  content:   '●';
+  color:     #ff4400;
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+.live-badge {
+  font-size:      0.55rem;
+  letter-spacing: 0.15em;
+  color:          #ff4400;
+  display:        flex;
+  align-items:    center;
+  gap:            4px;
+  animation:      glowPulse 2s ease-in-out infinite;
+}
+.live-badge::before { content: '●'; font-size: 0.5rem; }
+
+.agent-badge {
+  background:     rgba(255,80,0,0.12);
+  border:         1px solid rgba(255,80,0,0.4);
+  border-radius:  2px;
+  padding:        2px 6px;
+  font-size:      0.55rem;
+  letter-spacing: 0.1em;
+  color:          #ff6633;
+  font-weight:    600;
+}
+
+.version-badge {
+  background:     rgba(15,17,30,0.9);
+  border:         1px solid rgba(255,80,0,0.3);
+  border-radius:  2px;
+  padding:        2px 8px;
+  font-size:      0.6rem;
+  color:          rgba(255,80,0,0.7);
+  letter-spacing: 0.1em;
+}
+
+.status-pill {
+  border:         1px solid;
+  border-radius:  2px;
+  padding:        3px 8px;
+  font-size:      0.55rem;
+  letter-spacing: 0.12em;
+  font-weight:    600;
+  display:        flex;
+  align-items:    center;
+  gap:            5px;
+}
+.status-pill.bull { border-color: rgba(34,197,94,0.5);   color: #22c55e; background: rgba(34,197,94,0.08);   }
+.status-pill.bear { border-color: rgba(239,68,68,0.5);   color: #ef4444; background: rgba(239,68,68,0.08);   }
+.status-pill.conf { border-color: rgba(255,179,71,0.5);  color: #ffb347; background: rgba(255,179,71,0.08);  }
+.status-pill.neut { border-color: rgba(100,116,139,0.5); color: #94a3b8; background: rgba(100,116,139,0.08); }
+
+.prob-bar      { height: 6px; background: rgba(255,255,255,0.05); overflow: hidden; border-radius: 0; }
+.prob-bar-fill { height: 100%; animation: probFill 1.2s ease-out forwards; border-radius: 0; }
+
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: rgba(240,13,23,0.3); border-radius: 0; }
