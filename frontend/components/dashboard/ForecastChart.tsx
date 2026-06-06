@@ -19,6 +19,19 @@ export default function ForecastChart({ forecast }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [tab, setTab] = useState<Tab>('24H')
   const animRef = useRef<number>(0)
+  const [dims, setDims] = useState({ w: 0, h: 0 })
+
+  // ResizeObserver — sets real pixel dimensions once the container is laid out
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ro = new ResizeObserver(entries => {
+      const e = entries[0]
+      if (e) setDims({ w: e.contentRect.width, h: e.contentRect.height })
+    })
+    ro.observe(canvas)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -26,8 +39,9 @@ export default function ForecastChart({ forecast }: Props) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const W = canvas.width  = canvas.offsetWidth
-    const H = canvas.height = canvas.offsetHeight
+    const W = canvas.width  = dims.w || canvas.offsetWidth  || 600
+    const H = canvas.height = dims.h || canvas.offsetHeight || 200
+    if (W < 10 || H < 10) return
 
     const price   = forecast?.gold_price ?? 3300
     const bull    = forecast?.bullish_prob ?? 34
@@ -147,7 +161,7 @@ export default function ForecastChart({ forecast }: Props) {
     animRef.current = requestAnimationFrame(draw)
 
     return () => cancelAnimationFrame(animRef.current)
-  }, [forecast, tab])
+  }, [forecast, tab, dims])
 
   const bull = forecast?.bullish_prob ?? 34
   const bear = forecast?.bearish_prob ?? 33
