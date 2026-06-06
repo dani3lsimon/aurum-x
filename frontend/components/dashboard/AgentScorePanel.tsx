@@ -77,12 +77,12 @@ export default function AgentScorePanel({ scores }: Props) {
               </div>
 
               {/* Score value */}
-              <div className="text-xs font-bold w-10 text-right shrink-0" style={{ color }}>
+              <div className="font-bold w-10 text-right shrink-0" style={{ color, fontSize: '0.75rem' }}>
                 {score > 0 ? '+' : ''}{score.toFixed(0)}
               </div>
 
               {/* Confidence + weight */}
-              <div className="text-xs text-[var(--text-muted)] w-16 text-right shrink-0">
+              <div className="text-right shrink-0" style={{ color: 'var(--text-muted)', fontSize: '0.68rem', width: '4.5rem' }}>
                 {conf.toFixed(0)}% / {weight}%
               </div>
             </div>

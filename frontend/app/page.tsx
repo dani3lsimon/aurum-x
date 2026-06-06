@@ -139,32 +139,32 @@ export default function Page() {
       }}>
 
         {/* Row 1: Chart + Probability */}
-        <div style={{ gridColumn: 'span 8', background: '#06070b', minHeight: '360px' }}>
+        <div style={{ gridColumn: 'span 8', background: '#06070b', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
           <ForecastChart forecast={forecast} />
         </div>
-        <div style={{ gridColumn: 'span 4', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} />
         </div>
 
         {/* Row 2: Agents + Regime + Ranges */}
-        <div style={{ gridColumn: 'span 5', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 5', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <AgentScorePanel scores={agentScores} />
         </div>
-        <div style={{ gridColumn: 'span 3', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 3', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <RegimeClassifier forecast={forecast} />
         </div>
-        <div style={{ gridColumn: 'span 4', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <ForecastRanges forecast={forecast} />
         </div>
 
         {/* Row 3: Scenarios + Tail Risk + Alerts */}
-        <div style={{ gridColumn: 'span 5', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 5', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <ScenarioTree scenarios={scenarios} />
         </div>
-        <div style={{ gridColumn: 'span 3', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 3', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <TailRiskPanel forecast={forecast} />
         </div>
-        <div style={{ gridColumn: 'span 4', background: '#06070b' }}>
+        <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <AlertsFeed alerts={alerts} />
         </div>
       </main>

@@ -225,16 +225,13 @@ export default function ForecastChart({ forecast }: Props) {
 
       {/* Plain-language summary */}
       {summary && (
-        <div style={{
-          borderTop:    '1px solid rgba(240,13,23,0.12)',
-          paddingTop:   '10px',
-          marginTop:    '2px',
-        }}>
+        <div style={{ borderTop: '1px solid rgba(240,13,23,0.15)', paddingTop: '12px' }}>
+          <div className="section-label" style={{ marginBottom: '8px' }}>Market Intel Summary</div>
           <div style={{
-            fontSize:      '0.7rem',
-            color:         'var(--text-label)',
-            letterSpacing: '0.04em',
-            lineHeight:    1.7,
+            fontSize:      '0.78rem',
+            color:         '#c8cde0',
+            letterSpacing: '0.02em',
+            lineHeight:    1.8,
             textTransform: 'none',
             fontFamily:    "'JetBrains Mono', monospace",
           }}>
