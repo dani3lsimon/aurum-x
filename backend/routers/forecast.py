@@ -39,6 +39,14 @@ async def trigger_manual_cycle(background_tasks: BackgroundTasks, request: Reque
     }
 
 
+@router.post("/trigger/scenarios")
+async def trigger_scenarios(background_tasks: BackgroundTasks, request: Request):
+    """Manually trigger the scenario engine."""
+    scheduler = request.app.state.scheduler
+    background_tasks.add_task(scheduler._run_scenario_engine)
+    return {"status": "triggered", "message": "Scenario engine started", "timestamp": datetime.utcnow().isoformat()}
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket)

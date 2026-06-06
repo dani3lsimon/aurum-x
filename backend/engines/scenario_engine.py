@@ -64,8 +64,13 @@ Probabilities must sum to exactly 100."""
             cost = estimate_cost(MODEL_HAIKU, response.usage.input_tokens, response.usage.output_tokens)
             logger.info(f"[scenario_engine] tokens in={response.usage.input_tokens} out={response.usage.output_tokens} estimated_cost=${cost:.5f}")
 
-            raw_text = response.content[0].text
-            data = json.loads(raw_text)
+            raw_text = response.content[0].text.strip()
+            # Strip markdown code fences if present
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("```")[1]
+                if raw_text.startswith("json"):
+                    raw_text = raw_text[4:]
+            data = json.loads(raw_text.strip())
             scenarios = data.get("scenarios", data if isinstance(data, list) else [])
 
             if forecast.get("id") and scenarios:

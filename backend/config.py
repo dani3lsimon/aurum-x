@@ -26,7 +26,7 @@ COST_PER_1K_OUTPUT_DS_REASONER = 0.00219
 # ── Max tokens per tier ────────────────────────────────────────────────────
 MAX_TOKENS_HAIKU    = 300   # all regular haiku runs
 MAX_TOKENS_SONNET   = 500   # daily deep analysis
-MAX_TOKENS_SCENARIO = 600   # scenario engine (haiku)
+MAX_TOKENS_SCENARIO = 1200  # scenario engine (haiku) — 3 scenarios need ~900 tokens
 
 # ── Redis TTL for prompt-hash skip cache (= agent cycle time) ─────────────
 CACHE_TTL_FAST     = 30 * 60    # 30 min  — news/geo cycle
