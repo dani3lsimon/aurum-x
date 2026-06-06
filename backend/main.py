@@ -115,6 +115,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://aurum-x.vercel.app",
+        "https://aurum-x-one.vercel.app",
+        "https://*.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
