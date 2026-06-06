@@ -139,11 +139,21 @@ class AurumScheduler:
                     logger.error(f"RegimeAgent failed: {e}")
 
         market = self._collectors.get("market")
-        gold_price = 3300.0
+        gold_price = 0.0
         if market:
             try:
                 gd = await market.get_gold_price()
-                gold_price = gd.get("price", 0) or 3300.0
+                gold_price = gd.get("price", 0) or 0.0
+            except Exception:
+                pass
+        # Last-resort: pull from Supabase gold_prices table
+        if gold_price < 500:
+            try:
+                from services.supabase_service import get_supabase
+                sb = get_supabase()
+                row = sb.table("gold_prices").select("price").order("timestamp", desc=True).limit(1).execute()
+                if row.data:
+                    gold_price = float(row.data[0]["price"])
             except Exception:
                 pass
 
@@ -163,13 +173,23 @@ class AurumScheduler:
 
     async def _run_gold_price_update(self):
         market = self._collectors.get("market")
-        if market:
-            try:
-                data = await market.get_gold_price()
-                from services.redis_service import cache_set
-                await cache_set("gold_price", data, ttl_seconds=360)
-            except Exception as e:
-                logger.error(f"Gold price update failed: {e}")
+        if not market:
+            return
+        try:
+            data = await market.get_gold_price()
+            from services.redis_service import cache_set
+            await cache_set("gold_price", data, ttl_seconds=360)
+            price = data.get("price", 0)
+            if price and price > 500:
+                from services.supabase_service import get_supabase
+                sb = get_supabase()
+                sb.table("gold_prices").insert({
+                    "price": price,
+                    "source": data.get("source", "unknown"),
+                    "timestamp": datetime.utcnow().isoformat(),
+                }).execute()
+        except Exception as e:
+            logger.error(f"Gold price update failed: {e}")
 
     async def _run_market_update(self):
         market = self._collectors.get("market")
