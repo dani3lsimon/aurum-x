@@ -295,10 +295,12 @@ class OandaCollector:
                          else "bullish" if current > session_vwap
                          else "at_vwap")
 
-            # ── PRIOR SESSION LOW ────────────────────────────────
-            prior_low = None
+            # ── PRIOR SESSION LOW / HIGH ─────────────────────────
+            prior_low  = None
+            prior_high = None
             if len(candles_d) >= 2:
-                prior_low = candles_d[-2].get("low")
+                prior_low  = candles_d[-2].get("low")
+                prior_high = candles_d[-2].get("high")
 
             result = {
                 "status":          "live",
@@ -319,7 +321,8 @@ class OandaCollector:
                 "poc_price":       profile.get("poc_price"),
                 "vah":             profile.get("vah"),
                 "val":             profile.get("val"),
-                "prior_session_low": prior_low,
+                "prior_session_low":  prior_low,
+                "prior_session_high": prior_high,
                 "bars_used":       len(candles_60),
                 "fetched_at":      datetime.now(timezone.utc).isoformat(),
             }
