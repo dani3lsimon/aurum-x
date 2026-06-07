@@ -41,12 +41,13 @@ class BaseAgent(ABC):
 
     def __init__(self, name: str, description: str,
                  model: str = MODEL_HAIKU,
-                 skip_ttl: int = CACHE_TTL_STANDARD):
+                 skip_ttl: int = CACHE_TTL_STANDARD,
+                 max_tokens: int = None):
         self.name        = name
         self.description = description
         self.model       = model
         self.skip_ttl    = skip_ttl   # how long to cache prompt hash (= cycle time)
-        self.max_tokens  = MAX_TOKENS_SONNET if "sonnet" in model else MAX_TOKENS_HAIKU
+        self.max_tokens  = max_tokens or (MAX_TOKENS_SONNET if "sonnet" in model else MAX_TOKENS_HAIKU)
         self.ds_model    = DEEPSEEK_MODEL_HEAVY if "sonnet" in model else DEEPSEEK_MODEL_LIGHT
 
         self.last_score:      float = 0.0

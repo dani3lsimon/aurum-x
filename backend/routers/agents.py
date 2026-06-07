@@ -25,6 +25,22 @@ async def refresh_cot_data():
     return await collector.update_from_cftc()
 
 
+@router.get("/sentiment")
+async def get_sentiment():
+    """Real-time risk-on/off sentiment — VIX, SPY, copper, gold/copper ratio (Yahoo Finance)."""
+    from collectors.sentiment_collector import SentimentCollector
+    c = SentimentCollector()
+    return await c.get_risk_sentiment()
+
+
+@router.get("/etf-flows")
+async def get_etf_flows():
+    """Gold ETF flow signals — GLD/IAU price action as institutional-demand proxy (Yahoo Finance)."""
+    from collectors.etf_collector import ETFCollector
+    c = ETFCollector()
+    return await c.get_etf_flows()
+
+
 @router.get("/history/{agent_name}")
 async def get_agent_history(agent_name: str, limit: int = 50):
     sb = get_supabase()

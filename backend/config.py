@@ -27,6 +27,7 @@ COST_PER_1K_OUTPUT_DS_REASONER = 0.00219
 MAX_TOKENS_HAIKU    = 300   # all regular haiku runs
 MAX_TOKENS_SONNET   = 500   # daily deep analysis
 MAX_TOKENS_SCENARIO = 1200  # scenario engine (haiku) — 3 scenarios need ~900 tokens
+MAX_TOKENS_SENTIMENT = 450  # sentiment_agent (haiku) — VIX+SPY+ETF rationale + 5 key_factors runs ~285 tokens, 300 truncates ~1/3 of the time
 
 # ── Redis TTL for prompt-hash skip cache (= agent cycle time) ─────────────
 CACHE_TTL_FAST     = 30 * 60    # 30 min  — news/geo cycle

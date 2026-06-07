@@ -35,6 +35,7 @@ from agents.geopolitical_agent import GeopoliticalAgent
 from agents.liquidity_agent    import LiquidityAgent
 from agents.historical_agent   import HistoricalAgent
 from agents.regime_agent       import RegimeAgent
+from agents.sentiment_agent    import SentimentAgent
 
 # ── Collectors ─────────────────────────────────────────────────────────────
 from collectors.market_collector      import MarketCollector
@@ -42,6 +43,9 @@ from collectors.positioning_collector import PositioningCollector
 from collectors.news_collector        import NewsCollector
 from collectors.fmp_collector         import FMPCollector
 from collectors.release_detector      import ReleaseDetector
+from collectors.ctrader_collector     import CTraderCollector
+from collectors.sentiment_collector   import SentimentCollector
+from collectors.etf_collector         import ETFCollector
 
 # ── Engines ────────────────────────────────────────────────────────────────
 from engines.bayesian_engine  import BayesianEngine
@@ -70,6 +74,7 @@ async def lifespan(app: FastAPI):
         "liquidity_agent":    LiquidityAgent(),
         "historical_agent":   HistoricalAgent(),
         "regime_agent":       RegimeAgent(),
+        "sentiment_agent":    SentimentAgent(),
     }
 
     collectors = {
@@ -77,6 +82,9 @@ async def lifespan(app: FastAPI):
         "positioning": PositioningCollector(),
         "news":        NewsCollector(),
         "fmp":         FMPCollector(),
+        "ctrader":     CTraderCollector(),
+        "sentiment":   SentimentCollector(),
+        "etf":         ETFCollector(),
     }
 
     engines = {

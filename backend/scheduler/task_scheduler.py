@@ -59,6 +59,9 @@ class AurumScheduler:
         # Gold price every 5 min (free via FMP cache)
         self.scheduler.add_job(self._run_gold_price_update, IntervalTrigger(minutes=5),
                                id="gold_price", replace_existing=True)
+        # Live XAUUSD price via ctrader_collector (FMP-backed until cTrader OAuth lands) — every 5 min
+        self.scheduler.add_job(self._run_ctrader_price_update, IntervalTrigger(minutes=5),
+                               id="ctrader_price", replace_existing=True)
         # Market data every 15 min
         self.scheduler.add_job(self._run_market_update, IntervalTrigger(minutes=15),
                                id="market_data", replace_existing=True)
@@ -84,7 +87,7 @@ class AurumScheduler:
         logger.info(f"[STANDARD 2hr] {datetime.utcnow().isoformat()}")
         scores = await self._run_agents([
             "yield_agent", "dollar_agent", "positioning_agent",
-            "liquidity_agent", "macro_agent", "fed_agent",
+            "liquidity_agent", "macro_agent", "fed_agent", "sentiment_agent",
         ])
         await self._update_gold_and_bayesian(scores, run_regime=True)
 
@@ -190,6 +193,17 @@ class AurumScheduler:
                 }).execute()
         except Exception as e:
             logger.error(f"Gold price update failed: {e}")
+
+    async def _run_ctrader_price_update(self):
+        ctrader = self._collectors.get("ctrader")
+        if not ctrader:
+            return
+        try:
+            from services.redis_service import cache_set
+            data = await ctrader.get_gold_price()
+            await cache_set("live_xauusd_price", data, ttl_seconds=360)
+        except Exception as e:
+            logger.error(f"cTrader price update failed: {e}")
 
     async def _run_market_update(self):
         market = self._collectors.get("market")
