@@ -24,10 +24,10 @@ COST_PER_1K_INPUT_DS_REASONER  = 0.00055
 COST_PER_1K_OUTPUT_DS_REASONER = 0.00219
 
 # ── Max tokens per tier ────────────────────────────────────────────────────
-MAX_TOKENS_HAIKU    = 300   # all regular haiku runs
-MAX_TOKENS_SONNET   = 500   # daily deep analysis
+MAX_TOKENS_HAIKU    = 650   # all regular haiku runs — bumped for the 9-field enriched schema (rationale + 3-5 cited key_factors + notable_risk + 4 classification fields); 300 silently truncated JSON for every agent except sentiment_agent
+MAX_TOKENS_SONNET   = 800   # daily deep analysis — bumped to match enriched 9-field schema (was 500, sized for the old short schema)
 MAX_TOKENS_SCENARIO = 1200  # scenario engine (haiku) — 3 scenarios need ~900 tokens
-MAX_TOKENS_SENTIMENT = 450  # sentiment_agent (haiku) — VIX+SPY+ETF rationale + 5 key_factors runs ~285 tokens, 300 truncates ~1/3 of the time
+MAX_TOKENS_SENTIMENT = 650  # sentiment_agent (haiku) — aligned with MAX_TOKENS_HAIKU for the enriched schema
 
 # ── Redis TTL for prompt-hash skip cache (= agent cycle time) ─────────────
 CACHE_TTL_FAST     = 30 * 60    # 30 min  — news/geo cycle
