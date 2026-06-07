@@ -11,6 +11,7 @@ class NewsAgent(BaseAgent):
         super().__init__("news_agent", "Interprets financial news for gold impact",
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_FAST)
         self.collector = NewsCollector()
+        self.data_source = 'RSS'
 
     async def collect_data(self) -> dict:
         news = await self.collector.get_recent_news()

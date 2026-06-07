@@ -55,8 +55,34 @@ async def get_forecast_history(hours: int = 48) -> list:
 # ── Agent Scores ───────────────────────────────────────────────────────────
 
 async def insert_agent_score(score_data: dict) -> dict:
-    sb = get_supabase()
-    result = sb.table("agent_scores").insert(score_data).execute()
+    sb  = get_supabase()
+    raw = score_data.get("raw_data", {}) or {}
+    record = {
+        "agent_name":       score_data.get("agent_name"),
+        "score":            score_data.get("score"),
+        "confidence":       score_data.get("confidence"),
+        "rationale":        score_data.get("rationale"),
+        "raw_data":         raw,
+        "regime":           score_data.get("regime") or raw.get("regime"),
+        "timestamp":        score_data.get("timestamp"),
+        "signal_strength":  raw.get("signal_strength"),
+        "directional_bias": raw.get("directional_bias"),
+        "data_quality":     raw.get("data_quality", "medium"),
+        "notable_risk":     raw.get("notable_risk"),
+        "key_factors":      raw.get("key_factors", []),
+        "data_source":      score_data.get("data_source"),
+    }
+    result = sb.table("agent_scores").insert(record).execute()
+
+    history_record = {
+        "agent_name":       record["agent_name"],
+        "score":            record["score"],
+        "confidence":       record["confidence"],
+        "directional_bias": record["directional_bias"],
+        "timestamp":        record["timestamp"],
+    }
+    sb.table("agent_score_history").insert(history_record).execute()
+
     return result.data[0] if result.data else None
 
 

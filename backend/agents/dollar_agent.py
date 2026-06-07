@@ -24,6 +24,7 @@ class DollarAgent(BaseAgent):
         super().__init__("dollar_agent", "Interprets dollar strength and FX flows for gold impact",
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_STANDARD)
         self.macro = MacroCollector()
+        self.data_source = 'FRED'
 
     async def collect_data(self) -> dict:
         raw = await self.macro.get_dollar_data()

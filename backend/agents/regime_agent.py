@@ -19,6 +19,7 @@ class RegimeAgent(BaseAgent):
             model=MODEL_HAIKU,
             skip_ttl=CACHE_TTL_REGIME,
         )
+        self.data_source = 'Internal'
 
     async def collect_data(self) -> dict:
         scores = await get_latest_agent_scores()

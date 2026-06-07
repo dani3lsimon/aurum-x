@@ -11,6 +11,7 @@ class GeopoliticalAgent(BaseAgent):
         super().__init__("geopolitical_agent", "Interprets geopolitical events for gold impact",
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_FAST)
         self.collector = NewsCollector()
+        self.data_source = 'RSS'
 
     async def collect_data(self) -> dict:
         news = await self.collector.get_geopolitical_news()

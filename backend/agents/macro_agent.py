@@ -17,6 +17,7 @@ class MacroAgent(BaseAgent):
         )
         self.fred = MacroCollector()
         self.fmp  = FMPCollector()
+        self.data_source = 'FRED'
 
     async def collect_data(self) -> dict:
         fred_data = await self.fred.get_latest_indicators()

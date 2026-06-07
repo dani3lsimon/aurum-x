@@ -11,6 +11,7 @@ class LiquidityAgent(BaseAgent):
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_STANDARD)
         self.fmp  = FMPCollector()
         self.fred = MacroCollector()
+        self.data_source = 'FRED'
 
     async def collect_data(self) -> dict:
         fed  = await self.fred.get_fed_data()

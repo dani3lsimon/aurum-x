@@ -11,6 +11,7 @@ class YieldAgent(BaseAgent):
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_STANDARD)
         self.fmp  = FMPCollector()
         self.fred = MacroCollector()
+        self.data_source = 'FMP+FRED'
 
     async def collect_data(self) -> dict:
         yields = await self.fmp.get_treasury_yields()

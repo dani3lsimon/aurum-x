@@ -14,6 +14,7 @@ class FedAgent(BaseAgent):
             skip_ttl=skip_ttl,
         )
         self.collector = MacroCollector()
+        self.data_source = 'FRED'
 
     async def collect_data(self) -> dict:
         return await self.collector.get_fed_data()

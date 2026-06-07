@@ -22,13 +22,40 @@ settings = get_settings()
 client = anthropic.Anthropic()
 
 AGENT_SYSTEM_PROMPT = """You are an institutional macro analyst specialising in XAUUSD (Gold).
-Respond with a JSON object containing exactly:
-- score: float -100 to +100 (positive=bullish gold)
-- confidence: float 0-100
-- rationale: string 2-3 sentences
-- regime: string current macro regime
-- key_factors: list of max 5 strings
-Return only JSON. No preamble."""
+You MUST respond with a valid JSON object containing ALL of these exact fields — no exceptions:
+{
+  "score": float,
+  "confidence": float,
+  "rationale": string,
+  "regime": string,
+  "key_factors": [list of strings],
+  "signal_strength": string,
+  "directional_bias": string,
+  "data_quality": string,
+  "notable_risk": string
+}
+
+Field rules:
+- score: -100 to +100. Positive = bullish gold. Negative = bearish. 0 = neutral.
+- confidence: 0-100. How certain you are given the data quality and clarity of signal.
+- rationale: 2-3 precise sentences. MUST cite specific numbers from the data provided (e.g. "CPI at 3.2% YoY, above the 3.0% forecast"). Never write generic statements.
+- regime: The macro regime you detect. One of: inflation_shock | disinflation | recession_risk | growth_expansion | liquidity_expansion | liquidity_contraction | rate_hike_cycle | rate_cut_cycle | geopolitical_crisis | risk_off | unknown
+- key_factors: List of 3-5 strings. Each MUST cite a specific data value and its directional implication for gold. Example: "Real yield 2.11% — elevated but stable, mild headwind for gold"
+- signal_strength: One of: strong | moderate | weak | neutral
+- directional_bias: One of: bullish | bearish | neutral
+- data_quality: One of: high | medium | low. Use 'low' if data is missing, stale, or estimated. Use 'high' only if you received complete, current, real data.
+- notable_risk: One sentence on the primary risk to your view. What could make this score wrong? If no notable risk, write "none identified".
+
+Score calibration:
++80 to +100 = maximally bullish (hyperinflation + rate cuts + dollar collapse + VIX spike simultaneously)
++40 to +79  = moderately to strongly bullish
++10 to +39  = mildly bullish
+-10 to +10  = neutral
+-11 to -39  = mildly bearish
+-40 to -79  = moderately to strongly bearish
+-80 to -100 = maximally bearish
+
+Return only the JSON object. No markdown. No preamble. No explanation outside the JSON."""
 
 
 class BaseAgent(ABC):
@@ -53,6 +80,7 @@ class BaseAgent(ABC):
         self.last_score:      float = 0.0
         self.last_rationale:  str   = ""
         self.last_confidence: float = 50.0
+        self.data_source:     str   = "unknown"
 
     @abstractmethod
     async def collect_data(self) -> dict:
@@ -179,14 +207,15 @@ class BaseAgent(ABC):
             self.last_rationale  = result.get("rationale", "")
 
             score_record = {
-                "agent_name": self.name,
-                "score":      self.last_score,
-                "confidence": self.last_confidence,
-                "rationale":  self.last_rationale,
-                "raw_data":   {**result, "provider": provider,
-                               "tokens_in": in_tok, "tokens_out": out_tok},
-                "regime":     result.get("regime"),
-                "timestamp":  datetime.utcnow().isoformat(),
+                "agent_name":  self.name,
+                "score":       self.last_score,
+                "confidence":  self.last_confidence,
+                "rationale":   self.last_rationale,
+                "raw_data":    {**result, "provider": provider,
+                                "tokens_in": in_tok, "tokens_out": out_tok},
+                "regime":      result.get("regime"),
+                "data_source": getattr(self, "data_source", "unknown"),
+                "timestamp":   datetime.utcnow().isoformat(),
             }
 
             # ── Persist + broadcast ────────────────────────────────────
@@ -200,9 +229,11 @@ class BaseAgent(ABC):
             await cache_set(last_score_key, score_record, ttl_seconds=self.skip_ttl * 2)
 
             logger.info(
-                f"[{self.name}] score={self.last_score:.1f} "
-                f"conf={self.last_confidence:.0f}% "
-                f"regime={result.get('regime', 'unknown')}"
+                f"[{self.name}] Score: {self.last_score:.1f} | "
+                f"Conf: {self.last_confidence:.0f}% | "
+                f"Bias: {result.get('directional_bias', '?')} | "
+                f"Strength: {result.get('signal_strength', '?')} | "
+                f"Quality: {result.get('data_quality', '?')}"
             )
             return score_record
 

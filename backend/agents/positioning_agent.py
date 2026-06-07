@@ -12,6 +12,7 @@ class PositioningAgent(BaseAgent):
         super().__init__("positioning_agent", "Interprets CFTC managed-money positioning for gold",
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_STANDARD)
         self.collector = PositioningCollector()
+        self.data_source = 'CFTC'
 
     async def collect_data(self) -> dict:
         return await self.collector.get_latest()

@@ -18,6 +18,7 @@ class SentimentAgent(BaseAgent):
                          model=MODEL_HAIKU, skip_ttl=CACHE_TTL_STANDARD, max_tokens=MAX_TOKENS_SENTIMENT)
         self.sentiment = SentimentCollector()
         self.etf       = ETFCollector()
+        self.data_source = 'Yahoo Finance'
 
     async def collect_data(self) -> dict:
         import asyncio
