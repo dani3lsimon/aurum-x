@@ -87,15 +87,24 @@ async def insert_agent_score(score_data: dict) -> dict:
 
 
 async def get_latest_agent_scores() -> list:
+    """Latest score per unique agent — NOT the last N rows overall.
+    Agents run on different cadences (30min/2hr/6hr/daily), so a flat
+    timestamp-DESC limit silently drops whichever agents ran earliest
+    in a batch once enough other agents insert after them."""
     sb = get_supabase()
     result = (
         sb.table("agent_scores")
         .select("*")
         .order("timestamp", desc=True)
-        .limit(10)
+        .limit(50)
         .execute()
     )
-    return result.data
+    latest_by_agent = {}
+    for row in result.data:
+        name = row.get("agent_name")
+        if name not in latest_by_agent:
+            latest_by_agent[name] = row
+    return list(latest_by_agent.values())
 
 
 # ── Regime ─────────────────────────────────────────────────────────────────
