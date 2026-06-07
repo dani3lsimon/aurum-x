@@ -137,3 +137,36 @@ class SentimentCollector:
         await cache_set(cache_key, result, ttl_seconds=900)
         logger.info(f"Sentiment: VIX={vix_price} SPY={spy_chg_pct:+.2f}% regime={risk_regime}")
         return result
+
+    async def get_gold_intraday(self, interval: str = "1h", periods: int = 8) -> list:
+        """
+        Recent GC=F (COMEX gold futures) OHLCV bars from Yahoo Finance —
+        a free, no-key proxy for gold order-flow/momentum analysis (used by the
+        Short-Setup Score Engine's gold_momentum_bearish / below_prior_session_low
+        conditions). Cached 5 minutes. Returns [] (honest no-data) on any failure
+        — never fabricated bars.
+        """
+        cache_key = f"yf_gold_intraday_{interval}_{periods}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return cached
+        try:
+            data = await self._fetch_yf("GC=F", interval=interval, range_="5d")
+            r      = data.get("chart", {}).get("result", [{}])[0]
+            quotes = r.get("indicators", {}).get("quote", [{}])[0]
+            bars = [
+                {"ts": t, "close": c, "high": h, "low": l, "volume": v}
+                for t, c, h, l, v in zip(
+                    r.get("timestamp", []),
+                    quotes.get("close",  []),
+                    quotes.get("high",   []),
+                    quotes.get("low",    []),
+                    quotes.get("volume", []),
+                )
+                if c is not None
+            ][-periods:]
+            await cache_set(cache_key, bars, ttl_seconds=300)
+            return bars
+        except Exception as e:
+            logger.warning(f"Yahoo gold intraday error: {e}")
+            return []

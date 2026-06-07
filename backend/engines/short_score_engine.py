@@ -15,8 +15,17 @@ Design principles (per the project's no-fake-data rule):
 
 Pre-conditions are hard filters: if any fails, the signal is BLOCKED regardless
 of how high the confluence score is — no short signal should fire into a major
-data release, into an unacceptable spread, or against an extreme-long crowd
-that could squeeze higher before reversing.
+data release or against an extreme-long crowd that could squeeze higher before
+reversing.
+
+NOTE: three conditions in this engine previously depended on a direct
+broker order-flow feed that was unreachable from this deployed Railway
+process (see git history for the removed broker collector/agent modules).
+They have been replaced with real, reachable Yahoo Finance (GC=F) proxies:
+intraday momentum vs a short SMA, a Supabase-tracked 30-minute price-change
+check, and a prior-session-low breakdown check — all genuinely computed
+from live data,
+none fabricated.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -27,34 +36,20 @@ from services.websocket_manager import ws_manager
 logger = logging.getLogger(__name__)
 
 CONDITION_WEIGHTS = {
-    "dxy_rising":            2,   # FRED DTWEXBGS momentum
-    "real_yield_rising":     2,   # yield_agent score < -10 (agent bearish ⇒ real yields read as rising)
-    "price_below_vwap":      1,   # IBKR order flow — vwap_signal == 'bearish'
-    "negative_delta":        2,   # IBKR order flow — delta_direction == 'negative'
-    "cot_bearish_trend":     1,   # CFTC positioning — trend_8w == 'down'
-    "no_imminent_news":      1,   # FMP/economic_releases — no high-impact event in next 15 min
-    "options_gamma_bearish": 1,   # not implemented — always met=False, honest message
-    "etf_outflows":          1,   # ETF collector — combined_signal in [strong_outflow, mild_outflow]
-    "risk_on_equities":      1,   # Sentiment collector — risk_score > 20 and SPY positive
-    "price_breaks_support":  2,   # IBKR order flow — price < VAL (volume-profile value-area low)
+    "dxy_rising":              2,   # FRED DTWEXBGS momentum — DXY strengthening
+    "real_yield_rising":       2,   # yield_agent score < -10 (agent bearish ⇒ real yields read as rising)
+    "gold_momentum_bearish":   1,   # Yahoo Finance GC=F — price below 5-period hourly SMA
+    "gold_price_declining":    2,   # Supabase gold-price tracker — price lower than 30 min ago
+    "cot_bearish_trend":       1,   # CFTC positioning — managed-money trend_8w == 'down'
+    "no_imminent_news":        1,   # FMP/economic_releases — no high-impact event in next 15 min
+    "options_gamma_bearish":   1,   # not implemented — always met=False, honest message
+    "etf_outflows":            1,   # ETF collector — combined_signal in [strong_outflow, mild_outflow]
+    "risk_on_equities":        1,   # Sentiment collector — risk_score > 20 and SPY positive
+    "below_prior_session_low": 2,   # Yahoo Finance GC=F — price below prior daily session's low
 }
 MAX_SCORE = float(sum(CONDITION_WEIGHTS.values()))  # 14.0
 
-CONDITION_SOURCES = {
-    "dxy_rising":            "FRED",
-    "real_yield_rising":     "Agent",
-    "price_below_vwap":      "IBKR",
-    "negative_delta":        "IBKR",
-    "cot_bearish_trend":     "CFTC",
-    "no_imminent_news":      "FMP",
-    "options_gamma_bearish": "Not implemented",
-    "etf_outflows":          "Yahoo Finance",
-    "risk_on_equities":      "Yahoo Finance",
-    "price_breaks_support":  "IBKR",
-}
-
 NEWS_WINDOW_MINUTES = 15
-SPREAD_THRESHOLD    = 0.50
 
 
 def _met(met: bool, weight: int, value, threshold: str, source: str) -> dict:
@@ -65,13 +60,6 @@ def _met(met: bool, weight: int, value, threshold: str, source: str) -> dict:
         "threshold": threshold,
         "source":    source,
     }
-
-
-def _ibkr_unavailable(order_flow: dict) -> str:
-    """Short, table-friendly 'no data' message for IBKR-dependent conditions —
-    the full rationale is already exposed verbatim on /agents/orderflow."""
-    status = (order_flow or {}).get("status", "disconnected")
-    return f"unavailable — IBKR order-flow feed status='{status}' (see /agents/orderflow for full rationale)"
 
 
 def _no_data(weight: int, value: str, threshold: str, source: str) -> dict:
@@ -93,7 +81,6 @@ class ShortScoreEngine:
 
         # ── Gather raw inputs from each real source (independently — one
         #    source's failure must never blank out the others) ──────────────
-        order_flow         = await self._safe(self._get_order_flow)
         dollar_data        = await self._safe(self._get_dollar_data)
         agent_scores       = await self._safe(get_latest_agent_scores, default=[])
         positioning        = await self._safe(self._get_positioning)
@@ -101,6 +88,10 @@ class ShortScoreEngine:
         etf_flows          = await self._safe(self._get_etf_flows)
         risk_sentiment     = await self._safe(self._get_risk_sentiment)
         forecast           = await self._safe(get_latest_forecast)
+        hourly_bars        = await self._safe(self._get_gold_hourly_bars, default=[])
+        daily_bars         = await self._safe(self._get_gold_daily_bars, default=[])
+        current_price      = await self._safe(self._get_current_gold_price)
+        price_30m_ago      = await self._safe(self._get_price_30min_ago)
 
         agent_by_name = {a.get("agent_name"): a for a in (agent_scores or [])}
 
@@ -144,35 +135,42 @@ class ShortScoreEngine:
             )
             _track("yield_agent", False)
 
-        # 3. Price below VWAP (IBKR)
-        if order_flow and order_flow.get("status") == "live":
-            sig = order_flow.get("vwap_signal")
-            conditions["price_below_vwap"] = _met(
-                sig == "bearish", CONDITION_WEIGHTS["price_below_vwap"],
-                f"price={order_flow.get('current_price')} vs VWAP={order_flow.get('session_vwap')} ({sig})",
-                "price < session VWAP", "IBKR",
+        # 3. Gold intraday momentum bearish (Yahoo Finance GC=F vs 5-period hourly SMA)
+        closes = [b["close"] for b in (hourly_bars or []) if b.get("close") is not None]
+        if len(closes) >= 6:
+            sma5    = sum(closes[-5:]) / 5
+            current = closes[-1]
+            c_bearish = current < sma5
+            conditions["gold_momentum_bearish"] = _met(
+                c_bearish, CONDITION_WEIGHTS["gold_momentum_bearish"],
+                f"price ${current:.2f} vs 5H SMA ${sma5:.2f}",
+                "price < 5-period hourly SMA", "Yahoo Finance",
             )
-            _track("IBKR (order flow)", True)
+            _track("Yahoo Finance (GC=F intraday)", True)
         else:
-            conditions["price_below_vwap"] = _no_data(
-                CONDITION_WEIGHTS["price_below_vwap"], _ibkr_unavailable(order_flow),
-                "price < session VWAP", "IBKR",
+            conditions["gold_momentum_bearish"] = _no_data(
+                CONDITION_WEIGHTS["gold_momentum_bearish"],
+                f"unavailable — only {len(closes)} hourly bars returned (need >= 6)",
+                "price < 5-period hourly SMA", "Yahoo Finance",
             )
-            _track("IBKR (order flow)", False)
+            _track("Yahoo Finance (GC=F intraday)", False)
 
-        # 4. Negative cumulative delta (IBKR)
-        if order_flow and order_flow.get("status") == "live":
-            dd = order_flow.get("delta_direction")
-            conditions["negative_delta"] = _met(
-                dd == "negative", CONDITION_WEIGHTS["negative_delta"],
-                f"cumulative_delta(15m)={order_flow.get('cumulative_delta')} ({dd})",
-                "cumulative delta < 0 (selling pressure)", "IBKR",
+        # 4. Gold price declining vs 30 minutes ago (Supabase price tracker)
+        if price_30m_ago is not None and current_price is not None:
+            c_declining = current_price < price_30m_ago
+            conditions["gold_price_declining"] = _met(
+                c_declining, CONDITION_WEIGHTS["gold_price_declining"],
+                f"now ${current_price:.2f} vs 30m ago ${price_30m_ago:.2f}",
+                "current price < price 30 min ago", "Supabase (gold price tracker)",
             )
+            _track("Supabase (gold price tracker)", True)
         else:
-            conditions["negative_delta"] = _no_data(
-                CONDITION_WEIGHTS["negative_delta"], _ibkr_unavailable(order_flow),
-                "cumulative delta < 0 (selling pressure)", "IBKR",
+            conditions["gold_price_declining"] = _no_data(
+                CONDITION_WEIGHTS["gold_price_declining"],
+                "unavailable — no 30-minute-old price snapshot yet (tracker warms up over the first 30 min after deploy)",
+                "current price < price 30 min ago", "Supabase (gold price tracker)",
             )
+            _track("Supabase (gold price tracker)", False)
 
         # 5. COT bearish 8-week trend (CFTC managed money)
         if positioning and not positioning.get("error"):
@@ -243,34 +241,32 @@ class ShortScoreEngine:
             )
             _track("Yahoo Finance (sentiment)", False)
 
-        # 10. Price breaks support (price < VAL from IBKR volume profile)
-        if order_flow and order_flow.get("status") == "live" and order_flow.get("val") is not None:
-            price = order_flow.get("current_price")
-            val   = order_flow.get("val")
-            broke = price is not None and price < val
-            conditions["price_breaks_support"] = _met(
-                broke, CONDITION_WEIGHTS["price_breaks_support"],
-                f"price={price} vs VAL(support)={val}",
-                "price < VAL (value-area low)", "IBKR",
+        # 10. Price below prior session's low (Yahoo Finance GC=F daily bars)
+        prior_low = None
+        if len(daily_bars or []) >= 2:
+            prior_low = daily_bars[-2].get("low")
+        if prior_low is not None and current_price is not None:
+            c_below_low = float(current_price) < float(prior_low)
+            conditions["below_prior_session_low"] = _met(
+                c_below_low, CONDITION_WEIGHTS["below_prior_session_low"],
+                f"price ${current_price:.2f} vs prior session low ${prior_low:.2f}",
+                "price < prior session low", "Yahoo Finance",
             )
+            _track("Yahoo Finance (GC=F daily)", True)
         else:
-            conditions["price_breaks_support"] = _no_data(
-                CONDITION_WEIGHTS["price_breaks_support"], _ibkr_unavailable(order_flow),
-                "price < VAL (value-area low)", "IBKR",
+            conditions["below_prior_session_low"] = _no_data(
+                CONDITION_WEIGHTS["below_prior_session_low"],
+                "unavailable — insufficient daily bars or no current price to compare",
+                "price < prior session low", "Yahoo Finance",
             )
+            _track("Yahoo Finance (GC=F daily)", False)
 
         # ── Aggregate ───────────────────────────────────────────────────────
-        score         = sum(c["points"] for c in conditions.values())
+        score          = sum(c["points"] for c in conditions.values())
         conditions_met = sum(1 for c in conditions.values() if c["met"])
-        pct_score     = round((score / MAX_SCORE) * 100, 1) if MAX_SCORE else 0.0
+        pct_score      = round((score / MAX_SCORE) * 100, 1) if MAX_SCORE else 0.0
 
         # ── Pre-conditions (hard filters) ──────────────────────────────────
-        spread_acceptable = True
-        spread_value = "IBKR unavailable — defaulting to acceptable (fail-open)"
-        if order_flow and order_flow.get("status") == "live":
-            spread_acceptable = bool(order_flow.get("spread_ok", True))
-            spread_value = f"spread_ok={order_flow.get('spread_ok')} (threshold < ${SPREAD_THRESHOLD})"
-
         cot_not_extreme_bull = True
         cot_value = "CFTC data unavailable — defaulting to not-extreme (fail-open)"
         if positioning and not positioning.get("error"):
@@ -278,10 +274,6 @@ class ShortScoreEngine:
             cot_value = f"is_extreme_long={positioning.get('is_extreme_long')} (pct_of_8w_range={positioning.get('pct_of_8w_range')}%)"
 
         pre_conditions = {
-            "spread_acceptable": {
-                "pass":  spread_acceptable,
-                "value": spread_value,
-            },
             "no_imminent_news": {
                 "pass":  news_eval["clear"],
                 "value": news_eval["value"],
@@ -324,7 +316,7 @@ class ShortScoreEngine:
             "timestamp":            datetime.now(timezone.utc).isoformat(),
         }
 
-        await self._persist(result, order_flow, risk_sentiment, forecast, sb)
+        await self._persist(result, current_price, risk_sentiment, forecast, sb)
         await ws_manager.broadcast({"type": "short_score_update", "data": result})
 
         logger.info(
@@ -337,14 +329,10 @@ class ShortScoreEngine:
 
     # ── Persistence ─────────────────────────────────────────────────────────
 
-    async def _persist(self, result: dict, order_flow, risk_sentiment, forecast, sb):
+    async def _persist(self, result: dict, current_price, risk_sentiment, forecast, sb):
         try:
             vix = (risk_sentiment or {}).get("vix", {}).get("price") if risk_sentiment else None
-            gold_price = None
-            if order_flow and order_flow.get("current_price") is not None:
-                gold_price = order_flow.get("current_price")
-            elif forecast:
-                gold_price = forecast.get("gold_price")
+            gold_price = current_price if current_price is not None else (forecast or {}).get("gold_price")
 
             record = {
                 "timestamp":         result["timestamp"],
@@ -354,7 +342,6 @@ class ShortScoreEngine:
                 "active_conditions": result["conditions"],
                 "gold_price":        gold_price,
                 "vix":               vix,
-                "cumulative_delta":  (order_flow or {}).get("cumulative_delta"),
                 "trigger":           "scheduled",
             }
             sb.table("intraday_signals").insert(record).execute()
@@ -370,11 +357,6 @@ class ShortScoreEngine:
         except Exception as e:
             logger.warning(f"[short_score] data source failed: {e}")
             return default
-
-    @staticmethod
-    async def _get_order_flow():
-        from collectors.ibkr_orderflow_collector import IBKROrderFlowCollector
-        return await IBKROrderFlowCollector().get_order_flow()
 
     @staticmethod
     async def _get_dollar_data():
@@ -397,6 +379,40 @@ class ShortScoreEngine:
         return await SentimentCollector().get_risk_sentiment()
 
     @staticmethod
+    async def _get_gold_hourly_bars() -> list:
+        from collectors.sentiment_collector import SentimentCollector
+        return await SentimentCollector().get_gold_intraday(interval="1h", periods=8)
+
+    @staticmethod
+    async def _get_gold_daily_bars() -> list:
+        from collectors.sentiment_collector import SentimentCollector
+        return await SentimentCollector().get_gold_intraday(interval="1d", periods=3)
+
+    @staticmethod
+    async def _get_current_gold_price():
+        from collectors.fmp_collector import FMPCollector
+        data = await FMPCollector().get_gold_price()
+        return data.get("price")
+
+    @staticmethod
+    async def _get_price_30min_ago():
+        """Reads the Supabase 'cache' row written every 5 minutes by
+        scheduler._record_gold_price (key format gold_price_YYYYMMDD_HHMM,
+        rounded to the nearest 5-minute bucket, value JSONB {"price", "ts"}).
+        Returns None (honest no-data) if the tracker hasn't written a row for
+        that bucket yet — e.g. in the first ~30 min after a fresh deploy the
+        lookback window is still empty; that's reported as 'unavailable', not
+        faked."""
+        from services.redis_service import cache_get
+        target  = datetime.now(timezone.utc) - timedelta(minutes=30)
+        rounded = target.replace(minute=(target.minute // 5) * 5, second=0, microsecond=0)
+        key = f"gold_price_{rounded.strftime('%Y%m%d_%H%M')}"
+        cached = await cache_get(key)
+        if isinstance(cached, dict):
+            return cached.get("price")
+        return None
+
+    @staticmethod
     async def _get_upcoming_high_impact() -> list:
         sb = get_supabase()
         now    = datetime.now(timezone.utc).isoformat()
@@ -416,5 +432,5 @@ class ShortScoreEngine:
     def _evaluate_no_imminent_news(releases: list) -> dict:
         if not releases:
             return {"clear": True, "value": f"no high/critical-impact release scheduled within {NEWS_WINDOW_MINUTES} min"}
-        names = ", ".join(f"{r.get('release_name', r.get('indicator_name', '?'))} @ {r.get('release_date')}" for r in releases[:3])
+        names = ", ".join(f"{r.get('event', '?')} @ {r.get('release_date')}" for r in releases[:3])
         return {"clear": False, "value": f"IMMINENT: {names}"}

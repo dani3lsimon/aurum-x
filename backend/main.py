@@ -36,7 +36,6 @@ from agents.liquidity_agent    import LiquidityAgent
 from agents.historical_agent   import HistoricalAgent
 from agents.regime_agent       import RegimeAgent
 from agents.sentiment_agent    import SentimentAgent
-from agents.orderflow_agent    import OrderFlowAgent
 
 # ── Collectors ─────────────────────────────────────────────────────────────
 from collectors.market_collector      import MarketCollector
@@ -47,7 +46,6 @@ from collectors.release_detector      import ReleaseDetector
 from collectors.ctrader_collector     import CTraderCollector
 from collectors.sentiment_collector   import SentimentCollector
 from collectors.etf_collector         import ETFCollector
-from collectors.ibkr_orderflow_collector import IBKROrderFlowCollector
 
 # ── Engines ────────────────────────────────────────────────────────────────
 from engines.bayesian_engine    import BayesianEngine
@@ -63,7 +61,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 50)
     logger.info("         AURUM-X  STARTING UP")
     logger.info("      Powered by Claude (Anthropic)")
-    logger.info("      Market Data: FMP + IBKR + FRED")
+    logger.info("      Market Data: FMP + Yahoo Finance + FRED")
     logger.info("=" * 50)
 
     agents = {
@@ -78,7 +76,6 @@ async def lifespan(app: FastAPI):
         "historical_agent":   HistoricalAgent(),
         "regime_agent":       RegimeAgent(),
         "sentiment_agent":    SentimentAgent(),
-        "orderflow_agent":    OrderFlowAgent(),
     }
 
     collectors = {
@@ -89,7 +86,6 @@ async def lifespan(app: FastAPI):
         "ctrader":     CTraderCollector(),
         "sentiment":   SentimentCollector(),
         "etf":         ETFCollector(),
-        "ibkr":        IBKROrderFlowCollector(),
     }
 
     engines = {
@@ -152,7 +148,7 @@ async def health():
         "version": "2.0.0",
         "ai": "Anthropic Claude",
         "model": "claude-opus-4-5",
-        "data_sources": ["FMP MCP", "IBKR MCP", "FRED", "Finnhub"],
+        "data_sources": ["FMP MCP", "Yahoo Finance", "FRED", "Finnhub"],
     }
 
 

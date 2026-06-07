@@ -195,7 +195,7 @@ export default function Page() {
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <footer className="px-4 py-1.5 flex items-center justify-between border-t border-[var(--border-subtle)] shrink-0" style={{ zIndex: 10 }}>
         <div className="text-xs text-[var(--text-muted)]">
-          AURUM-X // CLAUDE SONNET+HAIKU // FMP + IBKR + FRED
+          AURUM-X // CLAUDE SONNET+HAIKU // FMP + Yahoo Finance + FRED
         </div>
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-[#00ff88]' : 'bg-[#4a5068]'}`}

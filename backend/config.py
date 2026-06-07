@@ -59,11 +59,6 @@ class Settings(BaseSettings):
     ctrader_client_secret: str = ""
     ctrader_account_id: str = ""
 
-    # IBKR (via MCP)
-    ibkr_host: str = "127.0.0.1"
-    ibkr_port: int = 7497
-    ibkr_client_id: int = 1
-
     # Cache via Supabase cache table — Redis not required
     redis_url: str = ""
 

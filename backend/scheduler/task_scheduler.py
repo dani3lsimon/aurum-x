@@ -74,6 +74,11 @@ class AurumScheduler:
         # Short-Setup Score Engine — 10-condition confluence gauge — every 5 min
         self.scheduler.add_job(self._run_short_score, IntervalTrigger(minutes=5),
                                id="short_score", replace_existing=True)
+        # Gold price tracker for short_score_engine.gold_price_declining —
+        # writes a timestamped snapshot to Supabase 'cache' every 5 min so the
+        # engine can honestly compare "price now vs price 30 minutes ago"
+        self.scheduler.add_job(self._record_gold_price, IntervalTrigger(minutes=5),
+                               id="record_gold_price", replace_existing=True)
 
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
@@ -197,6 +202,29 @@ class AurumScheduler:
         except Exception as e:
             logger.error(f"Gold price update failed: {e}")
 
+    async def _record_gold_price(self):
+        """Writes a 5-minute gold-price snapshot into Supabase 'cache' as
+        gold_price_{YYYYMMDD_HHMM} (rounded to the nearest 5-min bucket so
+        short_score_engine._get_price_30min_ago() can look one back reliably).
+        TTL is 40 min — comfortably covers the 30-min lookback plus clock drift.
+        Honest no-op if no real price is available — never writes a fabricated
+        value."""
+        market = self._collectors.get("market")
+        if not market:
+            return
+        try:
+            data = await market.get_gold_price()
+            price = data.get("price")
+            if not price or price < 500:
+                return
+            now = datetime.utcnow()
+            rounded = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
+            key = f"gold_price_{rounded.strftime('%Y%m%d_%H%M')}"
+            from services.redis_service import cache_set
+            await cache_set(key, {"price": price, "ts": now.isoformat()}, ttl_seconds=2400)
+        except Exception as e:
+            logger.error(f"Gold price recording failed: {e}")
+
     async def _run_ctrader_price_update(self):
         ctrader = self._collectors.get("ctrader")
         if not ctrader:
@@ -260,19 +288,7 @@ class AurumScheduler:
     async def _run_short_score(self):
         """Short-Setup Score Engine — re-evaluates the 10-condition confluence
         gauge, persists a row to intraday_signals, and broadcasts
-        {'type': 'short_score_update'} over the websocket. Every 5 minutes.
-
-        Runs the orderflow_agent first (fast 5-min cadence, like gold_price/
-        ctrader_price) so the engine's IBKR-dependent conditions read the
-        freshest possible order-flow snapshot — honest 'disconnected' status
-        included, since the engine itself fetches the collector directly too."""
-        orderflow_agent = self._agents.get("orderflow_agent")
-        if orderflow_agent:
-            try:
-                await orderflow_agent.run()
-            except Exception as e:
-                logger.error(f"OrderFlowAgent failed: {e}")
-
+        {'type': 'short_score_update'} over the websocket. Every 5 minutes."""
         engine = self._engines.get("short_score")
         if not engine:
             return

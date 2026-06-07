@@ -41,16 +41,6 @@ async def get_etf_flows():
     return await c.get_etf_flows()
 
 
-@router.get("/orderflow")
-async def get_order_flow():
-    """GC futures intraday order flow — VWAP/cumulative delta/volume profile (IBKR).
-    Honest status='disconnected' with rationale when no live IBKR feed is reachable —
-    see collectors/ibkr_orderflow_collector.py for why."""
-    from collectors.ibkr_orderflow_collector import IBKROrderFlowCollector
-    c = IBKROrderFlowCollector()
-    return await c.get_order_flow()
-
-
 @router.get("/history/{agent_name}")
 async def get_agent_history(agent_name: str, limit: int = 50):
     sb = get_supabase()
