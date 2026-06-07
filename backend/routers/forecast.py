@@ -1,13 +1,17 @@
 # backend/routers/forecast.py
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
-from services.supabase_service import get_latest_forecast, get_forecast_history
-from services.redis_service import cache_get
+from services.supabase_service import get_latest_forecast, get_forecast_history, get_latest_agent_scores
+from services.redis_service import cache_get, cache_set, cache_delete
 from services.websocket_manager import ws_manager
+from config import get_settings
 from datetime import datetime
 import logging
+import json
+import anthropic
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 @router.get("/latest")
@@ -45,6 +49,117 @@ async def trigger_scenarios(background_tasks: BackgroundTasks, request: Request)
     scheduler = request.app.state.scheduler
     background_tasks.add_task(scheduler._run_scenario_engine)
     return {"status": "triggered", "message": "Scenario engine started", "timestamp": datetime.utcnow().isoformat()}
+
+
+@router.get("/brief")
+async def get_intelligence_brief():
+    """
+    Generate a plain-English intelligence brief from current agent scores.
+    Cached 30 minutes — expensive call, no need to regenerate every cycle.
+    """
+    cache_key = "intelligence_brief"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    forecast     = await get_latest_forecast()
+    agent_scores = await get_latest_agent_scores()
+
+    if not forecast or not agent_scores:
+        return {"brief": None, "error": "insufficient data"}
+
+    # Build context for Claude
+    agents_summary = []
+    for a in agent_scores:
+        raw         = a.get("raw_data", {}) or {}
+        key_factors = raw.get("key_factors", [])
+        agents_summary.append({
+            "agent":      a.get("agent_name", "").replace("_agent", "").upper(),
+            "score":      a.get("score", 0),
+            "bias":       raw.get("directional_bias", "neutral"),
+            "strength":   raw.get("signal_strength", "weak"),
+            "rationale":  a.get("rationale", ""),
+            "key_factors": key_factors[:3],
+        })
+
+    prompt = f"""You are the Chief Macro Strategist at an institutional gold trading desk.
+
+Based on the data below, write a plain-English intelligence brief about gold (XAUUSD).
+
+Write it for an intelligent, non-technical reader. Avoid abbreviations, explain what things mean, use plain language.
+
+Current Gold Price: ${forecast.get('gold_price', 'unknown')}
+Overall Assessment: {forecast.get('bullish_prob', 0):.0f}% bullish / {forecast.get('bearish_prob', 0):.0f}% bearish
+Model Confidence: {forecast.get('confidence_score', 0):.0f}%
+Current Macro Regime: {forecast.get('macro_regime', 'unknown').replace('_', ' ')}
+
+Agent Intelligence:
+{json.dumps(agents_summary, indent=2)}
+
+Write a JSON response with exactly these fields:
+{{
+  "headline": "One punchy sentence summarising the current gold market situation in plain English",
+  "situation": "2-3 sentences explaining the overall environment. What is happening in markets right now and how does it affect gold? Use plain English. No abbreviations.",
+  "supporting_gold": [
+    "Plain English explanation of factor 1 supporting gold",
+    "Plain English explanation of factor 2 supporting gold",
+    "Plain English explanation of factor 3 supporting gold"
+  ],
+  "pressuring_gold": [
+    "Plain English explanation of factor 1 pressuring gold",
+    "Plain English explanation of factor 2 pressuring gold"
+  ],
+  "key_tension": "One paragraph explaining the most important contradiction or nuance in the current data. What makes this situation interesting or uncertain? Be specific about what the conflicting signals are.",
+  "bottom_line": "2 sentences. What does all this mean for gold right now? Write it like you are explaining it to a smart friend over coffee — clear, direct, no jargon.",
+  "watch_for": "One sentence. What is the single most important thing to monitor that could change this assessment?",
+  "confidence_note": "One sentence explaining why the model confidence is at the level it is — what is causing uncertainty or certainty?"
+}}
+
+Rules:
+- Never use: DXY, VWAP, COT, BPS, YoY, MoM, PCE, NFP, QT, QE or any other abbreviation without first explaining what it means
+- Always explain what a metric means before citing its value (e.g. not 'VIX at 21' but 'the VIX fear gauge, which measures how much volatility investors expect in the stock market, is at 21 — an elevated level suggesting genuine concern')
+- If there are contradictions in the data, highlight them explicitly — this is the most valuable insight
+- supporting_gold and pressuring_gold must each have 2-3 items — never more
+- Be honest about uncertainty — if signals are mixed, say so clearly
+
+Return only the JSON object. No markdown. No preamble."""
+
+    try:
+        client   = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model      = "claude-sonnet-4-5",
+            max_tokens = 1500,
+            system     = "You are a senior macro strategist. Write clear, jargon-free intelligence briefs.",
+            messages   = [{"role": "user", "content": prompt}]
+        )
+
+        raw_text = response.content[0].text.strip()
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:]
+            raw_text = raw_text.strip()
+
+        brief = json.loads(raw_text)
+        brief["generated_at"]  = datetime.utcnow().isoformat()
+        brief["gold_price"]    = forecast.get("gold_price")
+        brief["bullish_prob"]  = forecast.get("bullish_prob")
+        brief["bearish_prob"]  = forecast.get("bearish_prob")
+        brief["confidence"]    = forecast.get("confidence_score")
+        brief["regime"]        = forecast.get("macro_regime")
+
+        await cache_set(cache_key, brief, ttl_seconds=1800)
+        return brief
+
+    except Exception as e:
+        logger.error(f"Intelligence brief error: {e}")
+        return {"brief": None, "error": str(e)}
+
+
+@router.post("/brief/refresh")
+async def refresh_intelligence_brief():
+    await cache_delete("intelligence_brief")
+    return await get_intelligence_brief()
 
 
 @router.websocket("/ws")

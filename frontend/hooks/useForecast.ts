@@ -92,6 +92,11 @@ export function useForecast() {
       return
     }
 
+    // Brief refresh fires 90 seconds later, once the agent cycle has completed
+    setTimeout(() => {
+      fetch(`${BACKEND}/forecast/brief/refresh`, { method: 'POST' }).catch(() => {})
+    }, 90000)
+
     // Poll every 3s until a forecast newer than trigger time arrives (max 120s)
     let attempts = 0
     const poll = setInterval(async () => {

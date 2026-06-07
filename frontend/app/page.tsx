@@ -10,6 +10,7 @@ import TailRiskPanel     from '@/components/dashboard/TailRiskPanel'
 import AlertsFeed        from '@/components/dashboard/AlertsFeed'
 import ForecastChart     from '@/components/dashboard/ForecastChart'
 import COTPanel          from '@/components/dashboard/COTPanel'
+import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 
 export default function Page() {
   const {
@@ -158,6 +159,11 @@ export default function Page() {
         </div>
         <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <ForecastRanges forecast={forecast} />
+        </div>
+
+        {/* Intelligence Brief — full-width plain-English market analysis */}
+        <div style={{ gridColumn: '1 / 13', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+          <IntelligenceBrief />
         </div>
 
         {/* Row 3: Scenarios + Tail Risk + Alerts */}
