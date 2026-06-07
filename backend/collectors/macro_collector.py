@@ -54,6 +54,25 @@ class MacroCollector:
                 "previous": observations[1] if len(observations) > 1 else None,
             }
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    async def _fetch_fred_observations(self, series_id: str, limit: int = 6) -> list:
+        """
+        Raw observations array (newest first), for momentum/trend calcs that need
+        more than the latest+previous pair _fetch_fred() returns. FRED daily FX/DXY
+        series carry '.' for non-trading days — caller must filter those out.
+        """
+        params = {
+            "series_id": series_id,
+            "api_key": settings.fred_api_key,
+            "file_type": "json",
+            "limit": limit,
+            "sort_order": "desc",
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(FRED_BASE, params=params)
+            resp.raise_for_status()
+            return resp.json().get("observations", [])
+
     async def get_latest_indicators(self) -> dict:
         results = {}
         for name, series_id in FRED_SERIES.items():
@@ -96,4 +115,60 @@ class MacroCollector:
                 results[name] = await self._fetch_fred(series_id)
             except Exception as e:
                 results[name] = {"error": str(e)}
+        return results
+
+    async def get_dollar_data(self) -> dict:
+        """
+        FRED-based dollar-strength data — replaces FMP forex, which returns null
+        on the current plan tier. DTWEXBGS (Trade Weighted Dollar Index, Broad) is
+        the free, no-paywall DXY proxy; the FX series below give safe-haven context
+        (JPY/CHF strength vs USD = risk-off signal relevant to gold).
+
+        Series meaning (so callers don't need to guess direction):
+          DTWEXBGS / DTWEXM = broad / major trade-weighted USD indices (higher = stronger USD)
+          DEXUSEU = USD per 1 EUR  (= EURUSD spot)
+          DEXJPUS = JPY per 1 USD  (= USDJPY spot)
+          DEXUSUK = USD per 1 GBP  (= GBPUSD spot)
+          DEXSZUS = CHF per 1 USD  (= USDCHF spot)
+          DEXCHUS = CNH per 1 USD  (= USDCNH spot)
+
+        Honest no-data: any series FRED can't serve comes back as {"error": ...} —
+        no fabricated values, no silent fallback to stale numbers.
+        """
+        dollar_series = {
+            "DXY_BROAD": "DTWEXBGS",
+            "DXY_MAJOR": "DTWEXM",
+            "EURUSD":    "DEXUSEU",
+            "USDJPY":    "DEXJPUS",
+            "GBPUSD":    "DEXUSUK",
+            "USDCHF":    "DEXSZUS",
+            "USDCNH":    "DEXCHUS",
+        }
+        results = {}
+        for name, series_id in dollar_series.items():
+            try:
+                results[name] = await self._fetch_fred(series_id, limit=2)
+            except Exception as e:
+                logger.warning(f"FRED dollar fetch failed [{name}]: {e}")
+                results[name] = {"error": str(e)}
+
+        # Momentum: compare latest vs ~5 trading days back on the broad DXY proxy.
+        # FRED daily FX series mark non-trading days with '.', so pull extra
+        # observations and filter to real numeric values before comparing.
+        try:
+            obs = await self._fetch_fred_observations("DTWEXBGS", limit=8)
+            valid = [o for o in obs if o.get("value") not in (None, ".", "")]
+            if len(valid) >= 2:
+                latest_val  = float(valid[0]["value"])
+                earlier_val = float(valid[min(4, len(valid) - 1)]["value"])
+                if earlier_val:
+                    momentum = ((latest_val - earlier_val) / earlier_val) * 100
+                    results["DXY_MOMENTUM_PCT"]   = round(momentum, 4)
+                    results["DXY_DIRECTION"]      = "strengthening" if latest_val > earlier_val else "weakening"
+                    results["DXY_LATEST_DATE"]    = valid[0].get("date")
+                    results["DXY_COMPARE_DATE"]   = valid[min(4, len(valid) - 1)].get("date")
+        except Exception as e:
+            logger.warning(f"FRED DXY momentum calc failed: {e}")
+            results["DXY_MOMENTUM_ERROR"] = str(e)
+
         return results
