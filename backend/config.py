@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # permanently false — tighten to ~0.5 when switching to a live account.
     oanda_spread_threshold: float = 2.0
 
+    # Used only for the engine's display-only VIX-based position-size suggestion
+    # (AURUM-X never executes trades — this is informational sizing guidance).
+    account_size_usd: float = 10000.0
+
     @property
     def oanda_base_url(self) -> str:
         if self.oanda_environment == "practice":

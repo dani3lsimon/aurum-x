@@ -40,6 +40,12 @@ Rising net long = institutional accumulation = bullish momentum.
 Falling net long / rising net short = distribution = bearish momentum.
 Extreme crowding in either direction raises reversal risk.
 
+IMPORTANT: Extreme long positioning (>80th percentile) is a BEARISH contrarian
+signal — crowded longs historically precede reversals. Extreme short positioning
+(<20th percentile) is a BULLISH contrarian signal — short squeeze risk.
+Computed contrarian read: {data.get('cot_signal_label', 'unknown')}
+(cot_signal={data.get('cot_signal')} on a -1..+1 scale, {data.get('interpretation', '')}).
+
 Weekly managed-money positioning (last {data.get('weeks_analysed')} weeks, oldest → newest):
 {weekly_table}
 

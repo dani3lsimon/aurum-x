@@ -79,6 +79,10 @@ class AurumScheduler:
         # engine can honestly compare "price now vs price 30 minutes ago"
         self.scheduler.add_job(self._record_gold_price, IntervalTrigger(minutes=5),
                                id="record_gold_price", replace_existing=True)
+        # Daily 30-day rolling volatility calibration — 22:00 UTC (market close)
+        self.scheduler.add_job(self._run_calibration,
+                               CronTrigger(hour=22, minute=0, timezone="UTC"),
+                               id="daily_calibration", replace_existing=True)
 
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
@@ -296,6 +300,16 @@ class AurumScheduler:
             await engine.evaluate()
         except Exception as e:
             logger.error(f"Short-score engine failed: {e}")
+
+    async def _run_calibration(self):
+        """Daily 30-day rolling volatility calibration from real OANDA H1
+        candles — feeds the confluence engine's calibrated thresholds."""
+        try:
+            from services.signal_calibrator import compute_calibration
+            result = await compute_calibration()
+            logger.info(f"Daily calibration complete: {result.get('status')}")
+        except Exception as e:
+            logger.error(f"Calibration job error: {e}")
 
     async def _run_fmp_calendar_sync(self):
         try:

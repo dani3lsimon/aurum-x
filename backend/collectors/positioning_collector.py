@@ -15,11 +15,49 @@ Verified live field names on 2026-06-07 (subject to CFTC's own naming quirks):
 """
 import httpx
 import logging
+import math
 from datetime import datetime
 from services.redis_service import cache_get, cache_set, cache_delete
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
+
+
+def cot_contrarian_signal(pct_of_range: float) -> dict:
+    """
+    Converts MM net positioning percentile into a contrarian signal.
+    pct_of_range: 0-100 (position within 8-week range)
+
+    COT positioning is a CONTRARIAN indicator at extremes — crowded longs
+    historically precede reversals, crowded shorts precede squeezes:
+      At 50th percentile  → neutral (0)
+      At 95th+ percentile → strongly bearish (-1) — crowded long, squeeze risk to the downside
+      At 5th- percentile  → strongly bullish (+1) — extreme short = coiled spring
+
+    gamma=4 gives sharp but not extreme curvature.
+    """
+    r     = pct_of_range / 100.0      # normalise to 0-1
+    gamma = 4.0
+    raw   = math.tanh(gamma * (r - 0.5))
+    # Invert: high percentile = bearish
+    signal = -raw
+    label  = (
+        "strongly_bearish_contrarian"  if signal < -0.6 else
+        "moderately_bearish"           if signal < -0.2 else
+        "neutral"                      if abs(signal) <= 0.2 else
+        "moderately_bullish"           if signal < 0.6 else
+        "strongly_bullish_contrarian"
+    )
+    return {
+        "cot_signal":       round(signal, 3),
+        "cot_signal_label": label,
+        "pct_of_range":     pct_of_range,
+        "interpretation": (
+            f"MM net at {pct_of_range:.0f}th percentile of 8w range — "
+            f"{label.replace('_', ' ')}"
+        )
+    }
+
 
 CFTC_API_URL = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json"
 GOLD_CONTRACT_CODE = "088691"
@@ -160,6 +198,9 @@ class PositioningCollector:
             "is_extreme_short": is_extreme_short,
             "fetched_at":       datetime.utcnow().isoformat(),
         }
+
+        cot_data = cot_contrarian_signal(result.get("pct_of_8w_range", 50))
+        result.update(cot_data)
 
         await cache_set(CACHE_KEY, result, ttl_seconds=21600)
         logger.info(

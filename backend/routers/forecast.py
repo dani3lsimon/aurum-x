@@ -183,6 +183,18 @@ async def get_short_score():
     return result
 
 
+@router.get("/calibration")
+async def get_calibration():
+    """
+    30-day rolling volatility calibration computed from real OANDA H1 candles
+    (gold + EUR_USD proxy for DXY) — replaces hardcoded "significant move"
+    thresholds with statistics derived from actual recent market behaviour.
+    Recomputed daily at 22:00 UTC by the scheduler; cached 24h.
+    """
+    from services.signal_calibrator import compute_calibration
+    return await compute_calibration()
+
+
 @router.get("/short-score/history")
 async def get_short_score_history(limit: int = 48):
     """Recent intraday_signals rows — score history for the ShortScoreWidget sparkline/log."""

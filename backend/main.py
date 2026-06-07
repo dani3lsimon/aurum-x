@@ -23,6 +23,7 @@ from routers.agents    import router as agents_router
 from routers.scenarios import router as scenarios_router
 from routers.alerts    import router as alerts_router
 from routers.calendar  import router as calendar_router
+from routers.regime    import router as regime_router
 
 # ── Agents ─────────────────────────────────────────────────────────────────
 from agents.macro_agent        import MacroAgent
@@ -140,6 +141,7 @@ app.include_router(agents_router)
 app.include_router(scenarios_router)
 app.include_router(alerts_router)
 app.include_router(calendar_router)
+app.include_router(regime_router)
 
 
 @app.get("/health")
