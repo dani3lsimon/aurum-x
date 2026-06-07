@@ -71,6 +71,9 @@ class AurumScheduler:
         # Cache cleanup — delete expired Supabase cache rows every hour
         self.scheduler.add_job(self._run_cache_cleanup, IntervalTrigger(hours=1),
                                id="cache_cleanup", replace_existing=True)
+        # Short-Setup Score Engine — 10-condition confluence gauge — every 5 min
+        self.scheduler.add_job(self._run_short_score, IntervalTrigger(minutes=5),
+                               id="short_score", replace_existing=True)
 
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
@@ -253,6 +256,30 @@ class AurumScheduler:
     async def _run_cache_cleanup(self):
         from services.redis_service import cleanup_expired
         await cleanup_expired()
+
+    async def _run_short_score(self):
+        """Short-Setup Score Engine — re-evaluates the 10-condition confluence
+        gauge, persists a row to intraday_signals, and broadcasts
+        {'type': 'short_score_update'} over the websocket. Every 5 minutes.
+
+        Runs the orderflow_agent first (fast 5-min cadence, like gold_price/
+        ctrader_price) so the engine's IBKR-dependent conditions read the
+        freshest possible order-flow snapshot — honest 'disconnected' status
+        included, since the engine itself fetches the collector directly too."""
+        orderflow_agent = self._agents.get("orderflow_agent")
+        if orderflow_agent:
+            try:
+                await orderflow_agent.run()
+            except Exception as e:
+                logger.error(f"OrderFlowAgent failed: {e}")
+
+        engine = self._engines.get("short_score")
+        if not engine:
+            return
+        try:
+            await engine.evaluate()
+        except Exception as e:
+            logger.error(f"Short-score engine failed: {e}")
 
     async def _run_fmp_calendar_sync(self):
         try:

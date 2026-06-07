@@ -1,6 +1,6 @@
 # backend/routers/forecast.py
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
-from services.supabase_service import get_latest_forecast, get_forecast_history, get_latest_agent_scores
+from services.supabase_service import get_latest_forecast, get_forecast_history, get_latest_agent_scores, get_supabase
 from services.redis_service import cache_get, cache_set, cache_delete
 from services.websocket_manager import ws_manager
 from config import get_settings
@@ -160,6 +160,41 @@ Return only the JSON object. No markdown. No preamble."""
 async def refresh_intelligence_brief():
     await cache_delete("intelligence_brief")
     return await get_intelligence_brief()
+
+
+@router.get("/short-score")
+async def get_short_score():
+    """
+    Short-Setup Score Engine — 10-condition confluence gauge (0-100%) for an
+    intraday gold SHORT setup. Cached 60s; the scheduler also re-evaluates and
+    persists/broadcasts every 5 minutes (see scheduler._run_short_score).
+
+    Honest by design: conditions whose data source is unreachable report
+    met=False with a clear 'unavailable' value — see data_sources_missing.
+    """
+    cache_key = "short_setup_score"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    from engines.short_score_engine import ShortScoreEngine
+    result = await ShortScoreEngine().evaluate()
+    await cache_set(cache_key, result, ttl_seconds=60)
+    return result
+
+
+@router.get("/short-score/history")
+async def get_short_score_history(limit: int = 48):
+    """Recent intraday_signals rows — score history for the ShortScoreWidget sparkline/log."""
+    sb = get_supabase()
+    result = (
+        sb.table("intraday_signals")
+        .select("*")
+        .order("timestamp", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
 
 
 @router.websocket("/ws")

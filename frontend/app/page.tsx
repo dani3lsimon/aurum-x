@@ -10,11 +10,12 @@ import TailRiskPanel     from '@/components/dashboard/TailRiskPanel'
 import AlertsFeed        from '@/components/dashboard/AlertsFeed'
 import ForecastChart     from '@/components/dashboard/ForecastChart'
 import COTPanel          from '@/components/dashboard/COTPanel'
+import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 
 export default function Page() {
   const {
-    forecast, agentScores, scenarios, alerts, loading,
+    forecast, agentScores, scenarios, alerts, shortScore, loading,
     isConnected, isRefreshing, triggerManualCycle,
   } = useForecast()
 
@@ -148,6 +149,14 @@ export default function Page() {
         </div>
         <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} />
+        </div>
+
+        {/* Row 1.5: Short-Setup Score Engine — placed alongside the Probability Gauge
+            per spec intent (gridColumn 1/9 + 9/13 in the spec assumed a different
+            row layout; this project's Row 1 already pairs Chart + ProbabilityGauge,
+            so the new gauge gets its own full-width row directly beneath it). */}
+        <div style={{ gridColumn: '1 / 13', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+          <ShortScoreWidget shortScore={shortScore} />
         </div>
 
         {/* Row 2: Agents + Regime + Ranges */}

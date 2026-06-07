@@ -64,7 +64,38 @@ export interface EconomicRelease {
   gold_impact_score: number | null
 }
 
+export interface ShortScoreCondition {
+  met: boolean
+  points: number
+  value: string | number | null
+  threshold: string
+  source: string
+}
+
+export interface ShortScorePreCondition {
+  pass: boolean
+  value: string
+}
+
+export interface ShortScore {
+  short_setup_score: number
+  raw_score: number
+  max_score: number
+  conditions_met: number
+  total_conditions: number
+  signal: 'HIGH CONVICTION SHORT' | 'POTENTIAL SCALP SHORT' | 'NO TRADE' | 'BLOCKED'
+  signal_color: 'red' | 'amber' | 'green' | 'gray'
+  go: boolean
+  scalp: boolean
+  pre_conditions: Record<string, ShortScorePreCondition>
+  pre_conditions_pass: boolean
+  conditions: Record<string, ShortScoreCondition>
+  data_sources_live: string[]
+  data_sources_missing: string[]
+  timestamp: string
+}
+
 export interface WSMessage {
-  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change' | 'initial_state' | 'release_alert'
+  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change' | 'initial_state' | 'release_alert' | 'short_score_update'
   data: unknown
 }

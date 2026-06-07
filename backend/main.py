@@ -36,6 +36,7 @@ from agents.liquidity_agent    import LiquidityAgent
 from agents.historical_agent   import HistoricalAgent
 from agents.regime_agent       import RegimeAgent
 from agents.sentiment_agent    import SentimentAgent
+from agents.orderflow_agent    import OrderFlowAgent
 
 # ── Collectors ─────────────────────────────────────────────────────────────
 from collectors.market_collector      import MarketCollector
@@ -46,10 +47,12 @@ from collectors.release_detector      import ReleaseDetector
 from collectors.ctrader_collector     import CTraderCollector
 from collectors.sentiment_collector   import SentimentCollector
 from collectors.etf_collector         import ETFCollector
+from collectors.ibkr_orderflow_collector import IBKROrderFlowCollector
 
 # ── Engines ────────────────────────────────────────────────────────────────
-from engines.bayesian_engine  import BayesianEngine
-from engines.scenario_engine  import ScenarioEngine
+from engines.bayesian_engine    import BayesianEngine
+from engines.scenario_engine    import ScenarioEngine
+from engines.short_score_engine import ShortScoreEngine
 
 # ── Scheduler ──────────────────────────────────────────────────────────────
 from scheduler.task_scheduler import AurumScheduler
@@ -75,6 +78,7 @@ async def lifespan(app: FastAPI):
         "historical_agent":   HistoricalAgent(),
         "regime_agent":       RegimeAgent(),
         "sentiment_agent":    SentimentAgent(),
+        "orderflow_agent":    OrderFlowAgent(),
     }
 
     collectors = {
@@ -85,11 +89,13 @@ async def lifespan(app: FastAPI):
         "ctrader":     CTraderCollector(),
         "sentiment":   SentimentCollector(),
         "etf":         ETFCollector(),
+        "ibkr":        IBKROrderFlowCollector(),
     }
 
     engines = {
-        "bayesian": BayesianEngine(),
-        "scenario": ScenarioEngine(),
+        "bayesian":    BayesianEngine(),
+        "scenario":    ScenarioEngine(),
+        "short_score": ShortScoreEngine(),
     }
 
     release_detector = ReleaseDetector()

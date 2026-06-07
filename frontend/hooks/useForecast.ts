@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, WSMessage } from '@/lib/types'
+import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, ShortScore, WSMessage } from '@/lib/types'
 import { useWebSocket } from './useWebSocket'
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -12,6 +12,7 @@ export function useForecast() {
   const [scenarios,    setScenarios]    = useState<Scenario[]>([])
   const [alerts,       setAlerts]       = useState<Alert[]>([])
   const [releases,     setReleases]     = useState<EconomicRelease[]>([])
+  const [shortScore,   setShortScore]   = useState<ShortScore | null>(null)
   const [loading,      setLoading]      = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { isConnected, lastMessage }    = useWebSocket(WS_URL)
@@ -20,12 +21,13 @@ export function useForecast() {
   useEffect(() => {
     async function fetchInitial() {
       try {
-        const [fRes, aRes, sRes, alRes, relRes] = await Promise.all([
+        const [fRes, aRes, sRes, alRes, relRes, ssRes] = await Promise.all([
           fetch(`${BACKEND}/forecast/latest`),
           fetch(`${BACKEND}/agents/scores`),
           fetch(`${BACKEND}/scenarios/latest`),
           fetch(`${BACKEND}/alerts/recent`),
           fetch(`${BACKEND}/calendar/upcoming?days=7`),
+          fetch(`${BACKEND}/forecast/short-score`),
         ])
         if (fRes.ok) {
           const f = await fRes.json()
@@ -35,6 +37,10 @@ export function useForecast() {
         if (sRes.ok)   setScenarios(await sRes.json())
         if (alRes.ok)  setAlerts(await alRes.json())
         if (relRes.ok) setReleases(await relRes.json())
+        if (ssRes.ok) {
+          const ss = await ssRes.json()
+          if (ss && Object.keys(ss).length > 0) setShortScore(ss)
+        }
       } catch (e) {
         console.error('[AURUM-X] Initial fetch error:', e)
       } finally {
@@ -75,8 +81,29 @@ export function useForecast() {
       case 'release_alert':
         setReleases(prev => [msg.data as EconomicRelease, ...prev.slice(0, 19)])
         break
+
+      case 'short_score_update':
+        if (msg.data && typeof msg.data === 'object') {
+          setShortScore(msg.data as ShortScore)
+        }
+        break
     }
   }, [lastMessage])
+
+  // Auto-refresh short-score every 5 minutes (matches the backend scheduler cadence)
+  useEffect(() => {
+    const fetchShortScore = async () => {
+      try {
+        const r = await fetch(`${BACKEND}/forecast/short-score`)
+        if (r.ok) {
+          const ss = await r.json()
+          if (ss && Object.keys(ss).length > 0) setShortScore(ss)
+        }
+      } catch { /* keep previous value */ }
+    }
+    const interval = setInterval(fetchShortScore, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Manual refresh trigger — polls for result so button never stays stuck
   const triggerManualCycle = useCallback(async () => {
@@ -129,7 +156,7 @@ export function useForecast() {
   }, [isRefreshing])
 
   return {
-    forecast, agentScores, scenarios, alerts, releases,
+    forecast, agentScores, scenarios, alerts, releases, shortScore,
     loading, isConnected, isRefreshing, triggerManualCycle,
   }
 }
