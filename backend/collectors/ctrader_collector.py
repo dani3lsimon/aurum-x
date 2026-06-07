@@ -26,38 +26,15 @@ logger = logging.getLogger(__name__)
 class CTraderCollector:
     """
     Fetches live XAUUSD price. Cached 30 seconds — live price, fast refresh.
-    Currently backed by FMP (real data); will switch to a direct cTrader
-    OAuth2/OpenAPI client once that integration is built.
+    Backed by OANDA's v20 REST API (real broker bid/ask/spread) — replaces
+    the previous FMP-stub fallback now that a direct broker feed is wired up.
+    cTrader OAuth2/OpenAPI integration remains a future option (kept for
+    the MCP connector — see ibkr.env / ctrader credentials in .env).
     """
 
     async def get_gold_price(self) -> dict:
-        cache_key = "ctrader_xauusd_price"
-        cached = await cache_get(cache_key)
-        if cached:
-            return cached
-
-        from collectors.fmp_collector import FMPCollector
-        fmp = FMPCollector()
-        fmp_price = await fmp.get_gold_price()
-
-        if not fmp_price.get("price"):
-            result = {
-                "symbol":     "XAUUSD",
-                "price":      None,
-                "source":     "unavailable",
-                "rationale":  "No live price source reachable — FMP returned no data and cTrader OAuth integration is not yet built",
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-            }
-            return result
-
-        result = {
-            "symbol":     "XAUUSD",
-            "price":      fmp_price.get("price"),
-            "source":     "fmp",
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await cache_set(cache_key, result, ttl_seconds=30)
-        return result
+        from collectors.oanda_collector import OandaCollector
+        return await OandaCollector().get_gold_price()
 
     async def get_ohlcv(self, timeframe: str = "1h", bars: int = 24) -> list:
         """

@@ -46,6 +46,7 @@ from collectors.release_detector      import ReleaseDetector
 from collectors.ctrader_collector     import CTraderCollector
 from collectors.sentiment_collector   import SentimentCollector
 from collectors.etf_collector         import ETFCollector
+from collectors.oanda_collector       import OandaCollector
 
 # ── Engines ────────────────────────────────────────────────────────────────
 from engines.bayesian_engine    import BayesianEngine
@@ -86,6 +87,7 @@ async def lifespan(app: FastAPI):
         "ctrader":     CTraderCollector(),
         "sentiment":   SentimentCollector(),
         "etf":         ETFCollector(),
+        "oanda":       OandaCollector(),
     }
 
     engines = {

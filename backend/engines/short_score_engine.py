@@ -38,14 +38,14 @@ logger = logging.getLogger(__name__)
 CONDITION_WEIGHTS = {
     "dxy_rising":              2,   # FRED DTWEXBGS momentum — DXY strengthening
     "real_yield_rising":       2,   # yield_agent score < -10 (agent bearish ⇒ real yields read as rising)
-    "gold_momentum_bearish":   1,   # Yahoo Finance GC=F — price below 5-period hourly SMA
+    "gold_momentum_bearish":   1,   # OANDA order flow — price below session VWAP (vwap_signal == bearish)
     "gold_price_declining":    2,   # Supabase gold-price tracker — price lower than 30 min ago
     "cot_bearish_trend":       1,   # CFTC positioning — managed-money trend_8w == 'down'
     "no_imminent_news":        1,   # FMP/economic_releases — no high-impact event in next 15 min
     "options_gamma_bearish":   1,   # not implemented — always met=False, honest message
     "etf_outflows":            1,   # ETF collector — combined_signal in [strong_outflow, mild_outflow]
     "risk_on_equities":        1,   # Sentiment collector — risk_score > 20 and SPY positive
-    "below_prior_session_low": 2,   # Yahoo Finance GC=F — price below prior daily session's low
+    "below_prior_session_low": 2,   # OANDA daily candles — price below prior daily session's low
 }
 MAX_SCORE = float(sum(CONDITION_WEIGHTS.values()))  # 14.0
 
@@ -88,8 +88,7 @@ class ShortScoreEngine:
         etf_flows          = await self._safe(self._get_etf_flows)
         risk_sentiment     = await self._safe(self._get_risk_sentiment)
         forecast           = await self._safe(get_latest_forecast)
-        hourly_bars        = await self._safe(self._get_gold_hourly_bars, default=[])
-        daily_bars         = await self._safe(self._get_gold_daily_bars, default=[])
+        orderflow          = await self._safe(self._get_orderflow, default={})
         current_price      = await self._safe(self._get_current_gold_price)
         price_30m_ago      = await self._safe(self._get_price_30min_ago)
 
@@ -135,25 +134,24 @@ class ShortScoreEngine:
             )
             _track("yield_agent", False)
 
-        # 3. Gold intraday momentum bearish (Yahoo Finance GC=F vs 5-period hourly SMA)
-        closes = [b["close"] for b in (hourly_bars or []) if b.get("close") is not None]
-        if len(closes) >= 6:
-            sma5    = sum(closes[-5:]) / 5
-            current = closes[-1]
-            c_bearish = current < sma5
+        # 3. Gold momentum bearish (OANDA session VWAP signal — real broker order flow)
+        if orderflow and orderflow.get("status") == "live" and orderflow.get("vwap_signal") in ("bearish", "bullish", "at_vwap"):
+            vsig    = orderflow.get("vwap_signal")
+            current = orderflow.get("current_price")
+            vwap    = orderflow.get("session_vwap")
             conditions["gold_momentum_bearish"] = _met(
-                c_bearish, CONDITION_WEIGHTS["gold_momentum_bearish"],
-                f"price ${current:.2f} vs 5H SMA ${sma5:.2f}",
-                "price < 5-period hourly SMA", "Yahoo Finance",
+                vsig == "bearish", CONDITION_WEIGHTS["gold_momentum_bearish"],
+                f"price ${current} vs session VWAP ${vwap} (signal={vsig})",
+                "price below session VWAP (vwap_signal == bearish)", "OANDA",
             )
-            _track("Yahoo Finance (GC=F intraday)", True)
+            _track("OANDA (order flow / VWAP)", True)
         else:
             conditions["gold_momentum_bearish"] = _no_data(
                 CONDITION_WEIGHTS["gold_momentum_bearish"],
-                f"unavailable — only {len(closes)} hourly bars returned (need >= 6)",
-                "price < 5-period hourly SMA", "Yahoo Finance",
+                f"unavailable — {(orderflow or {}).get('error', 'OANDA order-flow VWAP signal not available')}",
+                "price below session VWAP (vwap_signal == bearish)", "OANDA",
             )
-            _track("Yahoo Finance (GC=F intraday)", False)
+            _track("OANDA (order flow / VWAP)", False)
 
         # 4. Gold price declining vs 30 minutes ago (Supabase price tracker)
         if price_30m_ago is not None and current_price is not None:
@@ -241,25 +239,24 @@ class ShortScoreEngine:
             )
             _track("Yahoo Finance (sentiment)", False)
 
-        # 10. Price below prior session's low (Yahoo Finance GC=F daily bars)
-        prior_low = None
-        if len(daily_bars or []) >= 2:
-            prior_low = daily_bars[-2].get("low")
-        if prior_low is not None and current_price is not None:
-            c_below_low = float(current_price) < float(prior_low)
+        # 10. Price below prior session's low (OANDA daily candles — real broker data)
+        prior_low    = (orderflow or {}).get("prior_session_low")
+        of_current   = (orderflow or {}).get("current_price")
+        if prior_low is not None and of_current is not None:
+            c_below_low = float(of_current) < float(prior_low)
             conditions["below_prior_session_low"] = _met(
                 c_below_low, CONDITION_WEIGHTS["below_prior_session_low"],
-                f"price ${current_price:.2f} vs prior session low ${prior_low:.2f}",
-                "price < prior session low", "Yahoo Finance",
+                f"price ${of_current:.2f} vs prior session low ${prior_low:.2f}",
+                "price < prior session low", "OANDA",
             )
-            _track("Yahoo Finance (GC=F daily)", True)
+            _track("OANDA (daily candles)", True)
         else:
             conditions["below_prior_session_low"] = _no_data(
                 CONDITION_WEIGHTS["below_prior_session_low"],
-                "unavailable — insufficient daily bars or no current price to compare",
-                "price < prior session low", "Yahoo Finance",
+                "unavailable — insufficient OANDA daily candles or no current price to compare",
+                "price < prior session low", "OANDA",
             )
-            _track("Yahoo Finance (GC=F daily)", False)
+            _track("OANDA (daily candles)", False)
 
         # ── Aggregate ───────────────────────────────────────────────────────
         score          = sum(c["points"] for c in conditions.values())
@@ -273,6 +270,12 @@ class ShortScoreEngine:
             cot_not_extreme_bull = not bool(positioning.get("is_extreme_long", False))
             cot_value = f"is_extreme_long={positioning.get('is_extreme_long')} (pct_of_8w_range={positioning.get('pct_of_8w_range')}%)"
 
+        spread_acceptable = bool((orderflow or {}).get("spread_ok", True))
+        if orderflow and orderflow.get("status") == "live":
+            spread_value = f"spread=${orderflow.get('spread')} (spread_ok={orderflow.get('spread_ok')})"
+        else:
+            spread_value = "OANDA spread data unavailable — defaulting to acceptable (fail-open)"
+
         pre_conditions = {
             "no_imminent_news": {
                 "pass":  news_eval["clear"],
@@ -281,6 +284,10 @@ class ShortScoreEngine:
             "cot_not_extreme_bull": {
                 "pass":  cot_not_extreme_bull,
                 "value": cot_value,
+            },
+            "spread_acceptable": {
+                "pass":  spread_acceptable,
+                "value": spread_value,
             },
         }
         pre_conditions_pass = all(p["pass"] for p in pre_conditions.values())
@@ -379,14 +386,9 @@ class ShortScoreEngine:
         return await SentimentCollector().get_risk_sentiment()
 
     @staticmethod
-    async def _get_gold_hourly_bars() -> list:
-        from collectors.sentiment_collector import SentimentCollector
-        return await SentimentCollector().get_gold_intraday(interval="1h", periods=8)
-
-    @staticmethod
-    async def _get_gold_daily_bars() -> list:
-        from collectors.sentiment_collector import SentimentCollector
-        return await SentimentCollector().get_gold_intraday(interval="1d", periods=3)
+    async def _get_orderflow() -> dict:
+        from collectors.oanda_collector import OandaCollector
+        return await OandaCollector().get_order_flow()
 
     @staticmethod
     async def _get_current_gold_price():

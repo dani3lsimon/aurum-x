@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     ctrader_client_secret: str = ""
     ctrader_account_id: str = ""
 
+    # OANDA v20 REST API — primary XAU_USD/FX/order-flow source
+    oanda_api_token:   str = ""
+    oanda_account_id:  str = ""
+    oanda_environment: str = "practice"
+
+    @property
+    def oanda_base_url(self) -> str:
+        if self.oanda_environment == "practice":
+            return "https://api-fxpractice.oanda.com"
+        return "https://api-fxtrade.oanda.com"
+
     # Cache via Supabase cache table — Redis not required
     redis_url: str = ""
 
