@@ -81,7 +81,7 @@ class OandaCollector:
                 "bid":         bid,
                 "ask":         ask,
                 "spread":      spread,
-                "spread_ok":   spread is not None and spread < 0.50,
+                "spread_ok":   spread is not None and spread < settings.oanda_spread_threshold,
                 "tradeable":   p.get("tradeable", False),
                 "timestamp":   p.get("time"),
                 "source":      "oanda",

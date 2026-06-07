@@ -32,8 +32,10 @@ from datetime import datetime, timedelta, timezone
 
 from services.supabase_service import get_supabase, get_latest_agent_scores, get_latest_forecast
 from services.websocket_manager import ws_manager
+from config import get_settings
 
-logger = logging.getLogger(__name__)
+logger   = logging.getLogger(__name__)
+settings = get_settings()
 
 CONDITION_WEIGHTS = {
     "dxy_rising":              2,   # FRED DTWEXBGS momentum — DXY strengthening
@@ -270,10 +272,16 @@ class ShortScoreEngine:
             cot_not_extreme_bull = not bool(positioning.get("is_extreme_long", False))
             cot_value = f"is_extreme_long={positioning.get('is_extreme_long')} (pct_of_8w_range={positioning.get('pct_of_8w_range')}%)"
 
-        spread_acceptable = bool((orderflow or {}).get("spread_ok", True))
-        if orderflow and orderflow.get("status") == "live":
-            spread_value = f"spread=${orderflow.get('spread')} (spread_ok={orderflow.get('spread_ok')})"
+        spread_threshold = settings.oanda_spread_threshold
+        of_spread        = (orderflow or {}).get("spread")
+        if of_spread is not None:
+            spread_acceptable = float(of_spread) < spread_threshold
+            spread_value = (
+                f"spread=${of_spread:.2f} vs threshold ${spread_threshold:.2f} "
+                f"({'OK' if spread_acceptable else 'too wide'} — {settings.oanda_environment} account)"
+            )
         else:
+            spread_acceptable = True
             spread_value = "OANDA spread data unavailable — defaulting to acceptable (fail-open)"
 
         pre_conditions = {
@@ -317,6 +325,13 @@ class ShortScoreEngine:
             "scalp":                scalp,
             "pre_conditions":       pre_conditions,
             "pre_conditions_pass":  pre_conditions_pass,
+            "spread_info": {
+                "current_spread": of_spread,
+                "threshold":      spread_threshold,
+                "acceptable":     spread_acceptable,
+                "account_type":   settings.oanda_environment,
+                "note":           "Practice-account spreads run wider than live. Lower oanda_spread_threshold (~0.5) when switching to a live OANDA account.",
+            },
             "conditions":           conditions,
             "data_sources_live":    sorted(set(data_sources_live)),
             "data_sources_missing": sorted(set(data_sources_missing)),

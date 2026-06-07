@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     oanda_api_token:   str = ""
     oanda_account_id:  str = ""
     oanda_environment: str = "practice"
+    # Practice-account XAU_USD spreads run ~1.0-2.0; live-account spreads run
+    # ~0.30-0.60. Set generously for practice so spread_acceptable isn't
+    # permanently false — tighten to ~0.5 when switching to a live account.
+    oanda_spread_threshold: float = 2.0
 
     @property
     def oanda_base_url(self) -> str:
