@@ -132,62 +132,60 @@ export default function Page() {
         </div>
       </header>
 
-      {/* ── Dashboard Grid ──────────────────────────────────────────────── */}
+      {/* ── Dashboard Grid — 7-row layout (v3.0 spec) ───────────────────── */}
       <main style={{
         flex: 1, display: 'grid', gap: '1px',
-        background: 'var(--border-subtle)',
+        background: 'rgba(255,80,0,0.06)',
         gridTemplateColumns: 'repeat(12, 1fr)',
-        gridTemplateRows: 'auto auto auto auto',
         alignItems: 'stretch',
         margin: '8px 12px 12px',
         border: '1px solid var(--border-subtle)',
       }}>
 
-        {/* Row 1: Chart + Probability */}
-        <div style={{ gridColumn: 'span 8', background: '#06070b', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
-          <ForecastChart forecast={forecast} />
-        </div>
-        <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        {/* Row 2 — Probability Gauge + Short-Setup Score */}
+        <div className="aurum-card" style={{ gridColumn: 'span 8', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
           <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} />
         </div>
-
-        {/* Row 1.5: Short-Setup Score Engine — placed alongside the Probability Gauge
-            per spec intent (gridColumn 1/9 + 9/13 in the spec assumed a different
-            row layout; this project's Row 1 already pairs Chart + ProbabilityGauge,
-            so the new gauge gets its own full-width row directly beneath it). */}
-        <div style={{ gridColumn: '1 / 13', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        <div className="aurum-card" style={{ gridColumn: 'span 4', minWidth: 0, overflow: 'hidden' }}>
           <ShortScoreWidget shortScore={shortScore} />
         </div>
 
-        {/* Row 2: Agents + Regime + Ranges */}
-        <div style={{ gridColumn: 'span 5', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
-          <AgentScorePanel scores={agentScores} />
+        {/* Row 3 — Forecast Chart + (Regime stacked above Ranges) */}
+        <div className="aurum-card" style={{ gridColumn: 'span 8', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
+          <ForecastChart forecast={forecast} />
         </div>
-        <div style={{ gridColumn: 'span 3', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
-          <RegimeClassifier forecast={forecast} />
-        </div>
-        <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
-          <ForecastRanges forecast={forecast} />
+        <div style={{ gridColumn: 'span 4', display: 'grid', gridTemplateRows: 'auto auto', gap: '1px', minWidth: 0 }}>
+          <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+            <RegimeClassifier forecast={forecast} />
+          </div>
+          <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+            <ForecastRanges forecast={forecast} />
+          </div>
         </div>
 
-        {/* Intelligence Brief — full-width plain-English market analysis */}
-        <div style={{ gridColumn: '1 / 13', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        {/* Row 4 — Agent Score Matrix (full width, all 11 agents) */}
+        <div className="aurum-card" style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
+          <AgentScorePanel scores={agentScores} />
+        </div>
+
+        {/* Row 5 — Intelligence Brief (full width) */}
+        <div className="aurum-card" style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
           <IntelligenceBrief />
         </div>
 
-        {/* Row 3: Scenarios + Tail Risk + Alerts */}
-        <div style={{ gridColumn: 'span 5', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        {/* Row 6 — Scenarios + Tail Risk + Alerts */}
+        <div className="aurum-card" style={{ gridColumn: 'span 5', minWidth: 0, overflow: 'hidden' }}>
           <ScenarioTree scenarios={scenarios} />
         </div>
-        <div style={{ gridColumn: 'span 3', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        <div className="aurum-card" style={{ gridColumn: 'span 4', minWidth: 0, overflow: 'hidden' }}>
           <TailRiskPanel forecast={forecast} />
         </div>
-        <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        <div className="aurum-card" style={{ gridColumn: 'span 3', minWidth: 0, overflow: 'hidden' }}>
           <AlertsFeed alerts={alerts} />
         </div>
 
-        {/* Row 4: COT Positioning (real CFTC public-API data) */}
-        <div style={{ gridColumn: 'span 12', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+        {/* Row 7 — COT Panel (full width) */}
+        <div className="aurum-card" style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
           <COTPanel />
         </div>
       </main>
