@@ -9,6 +9,7 @@ import ScenarioTree      from '@/components/dashboard/ScenarioTree'
 import TailRiskPanel     from '@/components/dashboard/TailRiskPanel'
 import AlertsFeed        from '@/components/dashboard/AlertsFeed'
 import ForecastChart     from '@/components/dashboard/ForecastChart'
+import COTPanel          from '@/components/dashboard/COTPanel'
 
 export default function Page() {
   const {
@@ -134,7 +135,7 @@ export default function Page() {
         flex: 1, display: 'grid', gap: '1px',
         background: 'var(--border-subtle)',
         gridTemplateColumns: 'repeat(12, 1fr)',
-        gridTemplateRows: 'auto auto auto',
+        gridTemplateRows: 'auto auto auto auto',
         alignItems: 'stretch',
         margin: '8px 12px 12px',
         border: '1px solid var(--border-subtle)',
@@ -168,6 +169,11 @@ export default function Page() {
         </div>
         <div style={{ gridColumn: 'span 4', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
           <AlertsFeed alerts={alerts} />
+        </div>
+
+        {/* Row 4: COT Positioning (real CFTC public-API data) */}
+        <div style={{ gridColumn: 'span 12', background: '#06070b', minWidth: 0, overflow: 'hidden' }}>
+          <COTPanel />
         </div>
       </main>
 
