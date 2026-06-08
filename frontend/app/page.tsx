@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useForecast } from '@/hooks/useForecast'
 import AgentScorePanel   from '@/components/dashboard/AgentScorePanel'
 import RegimeClassifier  from '@/components/dashboard/RegimeClassifier'
-import ForecastRanges    from '@/components/dashboard/ForecastRanges'
+import { ForecastRanges } from '@/components/dashboard/ForecastRanges'
 import ScenarioTree      from '@/components/dashboard/ScenarioTree'
 import AlertsFeed        from '@/components/dashboard/AlertsFeed'
 import ForecastChart     from '@/components/dashboard/ForecastChart'
@@ -40,6 +40,7 @@ export default function Page() {
     isConnected, isRefreshing, triggerManualCycle,
     liveGoldPrice, priceChange, wsStatus,
     lastTickPrice, signalChanged, signalChangedAt,
+    liveRanges, vixPrice,
   } = useForecast()
 
   const [toast, setToast]               = useState<string | null>(null)
@@ -288,6 +289,27 @@ export default function Page() {
               multiTf={multiTf}
             />
           </div>
+
+          {/* Probability distribution bar — live, shifts with tick price */}
+          <div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `${forecast?.bullish_prob ?? 24}fr ${forecast?.neutral_prob ?? 47}fr ${forecast?.bearish_prob ?? 29}fr`,
+              height: '8px',
+              gap: '1px',
+              margin: '0',
+            }}>
+              <div style={{ background: '#22c55e', opacity: 0.7, transition: 'flex 0.5s ease' }} title={`BULL ${forecast?.bullish_prob?.toFixed(1)}%`} />
+              <div style={{ background: '#2a2d3a', transition: 'flex 0.5s ease' }} title={`NEUT ${forecast?.neutral_prob?.toFixed(1)}%`} />
+              <div style={{ background: '#ef4444', opacity: 0.7, transition: 'flex 0.5s ease' }} title={`BEAR ${forecast?.bearish_prob?.toFixed(1)}%`} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#4a5068', padding: '3px 0', letterSpacing: '0.12em' }}>
+              <span className="c-bull">BULL {forecast?.bullish_prob?.toFixed(1)}%</span>
+              <span style={{ color: '#4a5068' }}>NEUT {forecast?.neutral_prob?.toFixed(1)}%</span>
+              <span className="c-bear">BEAR {forecast?.bearish_prob?.toFixed(1)}%</span>
+            </div>
+          </div>
+
           <div style={{ minWidth: 0, overflow: 'hidden' }}>
             <MultiTfPanel multiTf={multiTf} signalChanged={signalChanged} signalChangedAt={signalChangedAt} />
           </div>
@@ -296,7 +318,12 @@ export default function Page() {
               <AgentScorePanel scores={agentScores} layout="full" />
             </div>
             <div style={{ minWidth: 0, overflow: 'hidden' }}>
-              <ForecastRanges forecast={forecast} />
+              <ForecastRanges
+                liveRanges={liveRanges}
+                livePrice={liveGoldPrice || forecast?.gold_price || 0}
+                volScore={forecast?.volatility_score}
+                vix={vixPrice || undefined}
+              />
             </div>
           </div>
         </div>

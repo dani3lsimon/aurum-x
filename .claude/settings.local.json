@@ -263,7 +263,10 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('engines/short_score_engine.py'\\).read\\(\\)\\)\")",
       "Bash(curl -s http://localhost:8000/forecast/short-score)",
       "Bash(curl -s https://aurum-x-backend-production.up.railway.app/forecast/short-score)",
-      "Bash(curl -s --max-time 5 http://localhost:8000/forecast/multi-tf)"
+      "Bash(curl -s --max-time 5 http://localhost:8000/forecast/multi-tf)",
+      "Bash(curl -s --max-time 15 https://aurum-x-backend-production.up.railway.app/forecast/multi-tf)",
+      "Bash(curl -s --max-time 20 https://aurum-x-backend-production.up.railway.app/forecast/latest)",
+      "Bash(curl -s --max-time 20 https://aurum-x-backend-production.up.railway.app/agents/sentiment)"
     ]
   }
 }

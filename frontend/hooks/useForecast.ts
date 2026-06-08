@@ -35,6 +35,98 @@ export function useForecast() {
   const tickBufferRef = useRef<{ price: number; time: number }[]>([])
   const [lastTickPrice, setLastTickPrice] = useState<number>(0)
 
+  // ── Live price-range forecast — shifts with every tick ──────────────────
+  const computeLiveRanges = useCallback((
+    forecastIn: Forecast | null,
+    livePrice:  number,
+  ) => {
+    if (!forecastIn || !livePrice || !forecastIn.gold_price) return null
+
+    const anchor = forecastIn.gold_price   // price when forecast was generated
+    const delta  = livePrice - anchor      // how much price has moved since
+
+    const shift = (val: number | undefined) =>
+      val ? Math.round((val + delta) * 100) / 100 : null
+
+    const pct = (boundary: number | null) =>
+      boundary ? +((boundary - livePrice) / livePrice * 100).toFixed(2) : 0
+
+    const ranges = [
+      {
+        label:  '4H',
+        low:    shift(forecastIn.range_4h_low),
+        high:   shift(forecastIn.range_4h_high),
+        period: '4 hours',
+      },
+      {
+        label:  '24H',
+        low:    shift(forecastIn.range_24h_low),
+        high:   shift(forecastIn.range_24h_high),
+        period: '24 hours',
+      },
+      {
+        label:  '1W',
+        low:    shift(forecastIn.range_1w_low),
+        high:   shift(forecastIn.range_1w_high),
+        period: '1 week',
+      },
+      {
+        label:  '1M',
+        low:    shift(forecastIn.range_1m_low),
+        high:   shift(forecastIn.range_1m_high),
+        period: '1 month',
+      },
+      {
+        label:  '1Q',
+        low:    shift(forecastIn.range_1q_low),
+        high:   shift(forecastIn.range_1q_high),
+        period: '1 quarter',
+      },
+    ].map(r => ({
+      ...r,
+      pct_to_low:  r.low  ? pct(r.low)  : 0,
+      pct_to_high: r.high ? pct(r.high) : 0,
+      inside:      r.low && r.high
+        ? livePrice >= r.low && livePrice <= r.high
+        : false,
+      above_high:  r.high ? livePrice > r.high : false,
+      below_low:   r.low  ? livePrice < r.low  : false,
+    }))
+
+    return {
+      ranges,
+      anchor_price:   anchor,
+      live_price:     livePrice,
+      price_delta:    +delta.toFixed(2),
+      last_updated:   new Date().toISOString(),
+    }
+  }, [])
+
+  // Recompute on every tick
+  const [liveRanges, setLiveRanges] = useState<ReturnType<typeof computeLiveRanges>>(null)
+
+  useEffect(() => {
+    if (!forecast || !liveGoldPrice) return
+    setLiveRanges(computeLiveRanges(forecast, liveGoldPrice))
+  }, [liveGoldPrice, forecast, computeLiveRanges])  // fires on every tick
+
+  // ── Live VIX — polled from /agents/sentiment every minute ────────────────
+  const [vixPrice, setVixPrice] = useState<number>(0)
+
+  useEffect(() => {
+    const fetchVix = () =>
+      fetch(`${BACKEND}/agents/sentiment`)
+        .then(r => r.json())
+        .then(d => {
+          const vix = d?.vix?.price || d?.risk_sentiment?.vix?.price
+          if (vix) setVixPrice(vix)
+        })
+        .catch(() => {})
+    fetchVix()
+    const interval = setInterval(fetchVix, 60000)   // VIX updates every minute
+    return () => clearInterval(interval)
+  }, [])
+
   // Signal direction transition tracking
   const prevSignalRef = useRef<string>('')
   const [signalChanged, setSignalChanged] = useState(false)
@@ -350,5 +442,6 @@ export function useForecast() {
     liveGoldPrice, priceChange, wsStatus,
     lastTickPrice, tickBufferRef,
     signalChanged, signalChangedAt,
+    liveRanges, vixPrice,
   }
 }

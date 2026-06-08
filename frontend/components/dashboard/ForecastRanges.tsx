@@ -1,68 +1,232 @@
 'use client'
-import { Forecast } from '@/lib/types'
 
-interface Props { forecast: Forecast | null }
+interface RangeLine {
+  label:        string
+  low:          number | null
+  high:         number | null
+  pct_to_low:   number
+  pct_to_high:  number
+  inside:       boolean
+  above_high:   boolean
+  below_low:    boolean
+  period:       string
+}
 
-const HORIZONS = [
-  { label: '4H',  low: 'range_4h_low',  high: 'range_4h_high'  },
-  { label: '24H', low: 'range_24h_low', high: 'range_24h_high' },
-  { label: '1W',  low: 'range_1w_low',  high: 'range_1w_high'  },
-  { label: '1M',  low: 'range_1m_low',  high: 'range_1m_high'  },
-  { label: '1Q',  low: 'range_1q_low',  high: 'range_1q_high'  },
-] as const
+interface LiveRanges {
+  ranges:        RangeLine[]
+  anchor_price:  number
+  live_price:    number
+  price_delta:   number
+  last_updated:  string
+}
 
-export default function ForecastRanges({ forecast }: Props) {
-  const price = forecast?.gold_price ?? 0
-  const vol   = forecast?.volatility_score ?? 50
+interface Props {
+  liveRanges:  LiveRanges | null
+  livePrice:   number
+  volScore?:   number
+  vix?:        number
+}
+
+export function ForecastRanges({ liveRanges, livePrice, volScore, vix }: Props) {
+
+  if (!liveRanges) {
+    return (
+      <div className="aurum-card" style={{ padding: '16px' }}>
+        <div className="section-label">PRICE RANGE FORECAST</div>
+        <div style={{ fontSize: '11px', color: '#4a5068', marginTop: '12px' }}>
+          AWAITING FORECAST DATA...
+        </div>
+      </div>
+    )
+  }
+
+  const { ranges, anchor_price, price_delta } = liveRanges
+  const deltaColor   = price_delta >= 0 ? '#22c55e' : '#ef4444'
+  const deltaSign    = price_delta >= 0 ? '+' : ''
 
   return (
-    <div className="aurum-card p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div className="section-label">Price Range Forecast</div>
-        <div className="text-xs text-[var(--text-muted)]">VOL {vol.toFixed(0)}</div>
+    <div className="aurum-card" style={{ padding: '16px' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+        <div>
+          <div className="section-label">PRICE RANGE FORECAST</div>
+          <div style={{ fontSize: '10px', color: '#2a2d3a', letterSpacing: '0.1em', marginTop: '2px' }}>
+            ANCHOR ${anchor_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <span style={{ color: deltaColor, marginLeft: '6px' }}>
+              {deltaSign}{price_delta.toFixed(2)} LIVE SHIFT
+            </span>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.1em', marginBottom: '3px' }}>
+            VOL SCORE
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '48px', height: '4px', background: 'rgba(255,255,255,0.06)' }}>
+              <div style={{
+                width: `${volScore ?? 50}%`,
+                height: '100%',
+                background: (volScore ?? 50) > 70
+                  ? '#ef4444'
+                  : (volScore ?? 50) > 40
+                  ? '#ffb347'
+                  : '#22c55e',
+                transition: 'width 0.5s ease',
+              }} />
+            </div>
+            <span style={{
+              fontSize: '13px',
+              fontWeight: 700,
+              color: (volScore ?? 50) > 70 ? '#ef4444' : (volScore ?? 50) > 40 ? '#ffb347' : '#22c55e',
+            }}>
+              {volScore ?? 50}
+            </span>
+            {vix ? (
+              <span style={{ fontSize: '10px', color: '#4a5068' }}>VIX {vix.toFixed(1)}</span>
+            ) : null}
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        {HORIZONS.map(({ label, low, high }) => {
-          const lo = forecast?.[low] ?? 0
-          const hi = forecast?.[high] ?? 0
-          const mid = (lo + hi) / 2
-          const bias = price > 0 ? ((mid - price) / price) * 100 : 0
+      {/* Range rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '12px' }}>
+        {ranges.map(r => {
+          if (!r.low || !r.high) return null
+
+          // Visual fill bar — shows where current price is within range
+          const rangeWidth    = r.high - r.low
+          const pricePosition = Math.max(0, Math.min(100,
+            ((livePrice - r.low) / rangeWidth) * 100
+          ))
+          const isOutside = r.above_high || r.below_low
 
           return (
-            <div key={label} className="flex items-center gap-3">
-              <div className="text-xs font-bold text-[var(--accent-primary)] w-6 shrink-0">{label}</div>
+            <div key={r.label} style={{
+              padding: '8px 10px',
+              background: r.inside
+                ? 'rgba(255,80,0,0.06)'
+                : 'rgba(255,255,255,0.02)',
+              border: `1px solid ${r.inside ? 'rgba(255,80,0,0.2)' : 'rgba(255,255,255,0.04)'}`,
+            }}>
+              {/* Main row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
 
-              <div className="flex-1 flex flex-col gap-0.5">
-                <div className="flex justify-between" style={{ fontSize: '12px' }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 700 }}>${lo.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
-                  <span style={{ color: bias > 0 ? '#22c55e' : bias < 0 ? '#ef4444' : 'var(--text-muted)' }}>
-                    {bias > 0 ? '+' : ''}{bias.toFixed(1)}%
+                {/* Label */}
+                <div style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: r.inside ? '#ff7744' : '#6b7494',
+                  letterSpacing: '0.12em',
+                  minWidth: '28px',
+                }}>
+                  {r.label}
+                </div>
+
+                {/* Low side */}
+                <div style={{ textAlign: 'right', minWidth: '80px' }}>
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: r.below_low ? '#ef4444' : '#6b7494',
+                  }}>
+                    ${r.low.toLocaleString('en-US', { minimumFractionDigits: 0 })}
                   </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 700 }}>${hi.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                  <span style={{
+                    fontSize: '10px',
+                    color: r.pct_to_low < 0 ? '#ef4444' : '#22c55e',
+                    marginLeft: '4px',
+                  }}>
+                    {r.pct_to_low > 0 ? '+' : ''}{r.pct_to_low.toFixed(1)}%
+                  </span>
                 </div>
-                <div className="h-1 bg-[rgba(255,255,255,0.04)] relative overflow-hidden">
-                  {lo > 0 && hi > 0 && price > 0 && (
-                    <div
-                      className="absolute h-full"
-                      style={{
-                        left: '0%',
-                        right: '0%',
-                        background: `linear-gradient(90deg, #ef444440, #ff440060, #22c55e40)`,
-                      }}
-                    />
-                  )}
+
+                {/* Status badge */}
+                <div style={{
+                  fontSize: '9px',
+                  padding: '2px 6px',
+                  border: '1px solid',
+                  letterSpacing: '0.1em',
+                  ...(r.inside
+                    ? { color: '#ff7744', borderColor: 'rgba(255,80,0,0.3)', background: 'rgba(255,80,0,0.08)' }
+                    : r.above_high
+                    ? { color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.06)' }
+                    : { color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }
+                  ),
+                }}>
+                  {r.inside ? 'IN RANGE' : r.above_high ? 'ABOVE' : 'BELOW'}
                 </div>
+
+                {/* High side */}
+                <div style={{ textAlign: 'left', minWidth: '80px' }}>
+                  <span style={{
+                    fontSize: '10px',
+                    color: r.pct_to_high > 0 ? '#22c55e' : '#ef4444',
+                    marginRight: '4px',
+                  }}>
+                    {r.pct_to_high > 0 ? '+' : ''}{r.pct_to_high.toFixed(1)}%
+                  </span>
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: r.above_high ? '#22c55e' : '#6b7494',
+                  }}>
+                    ${r.high.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Position bar — shows where price sits within the range */}
+              <div style={{ position: 'relative', height: '3px', background: 'rgba(255,255,255,0.05)' }}>
+                {/* Filled portion up to current price */}
+                <div style={{
+                  position: 'absolute',
+                  left: 0,
+                  width: `${pricePosition}%`,
+                  height: '100%',
+                  background: 'rgba(255,80,0,0.3)',
+                  transition: 'width 0.3s ease',
+                }} />
+                {/* Current price marker */}
+                {!isOutside && (
+                  <div style={{
+                    position: 'absolute',
+                    left: `${pricePosition}%`,
+                    top: '-2px',
+                    transform: 'translateX(-50%)',
+                    width: '3px',
+                    height: '7px',
+                    background: '#ff5500',
+                    boxShadow: '0 0 4px rgba(255,80,0,0.8)',
+                  }} />
+                )}
               </div>
             </div>
           )
         })}
       </div>
 
-      <div className="border-t border-[var(--border-subtle)] pt-2 flex justify-between text-[var(--text-muted)]" style={{ fontSize: '12px' }}>
-        <span>CURRENT <span className="text-white">${price.toLocaleString()}</span></span>
-        <span>VOL SCORE <span className="text-[var(--accent-amber)]">{vol.toFixed(0)}/100</span></span>
+      {/* Footer: current price + live indicator */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid rgba(255,80,0,0.08)' }}>
+        <div>
+          <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.12em', marginBottom: '2px' }}>
+            CURRENT
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: '#ff5500', letterSpacing: '-0.01em' }}>
+            ${livePrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '10px', color: '#22c55e', letterSpacing: '0.12em', marginBottom: '2px' }}>
+            ● TICK UPDATE
+          </div>
+          <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.08em' }}>
+            EVERY CTRADER TICK
+          </div>
+        </div>
       </div>
     </div>
   )
 }
+
+export default ForecastRanges
