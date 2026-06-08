@@ -4,6 +4,7 @@ import { ShortScore } from '@/lib/types'
 
 interface Props {
   shortScore: ShortScore | null
+  compact?: boolean
 }
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -44,7 +45,7 @@ function GaugeBar({ value, color }: { value: number; color: string }) {
   )
 }
 
-export default function ShortScoreWidget({ shortScore }: Props) {
+export default function ShortScoreWidget({ shortScore, compact = false }: Props) {
   const [showConditions, setShowConditions] = useState(false)
   const longScore   = shortScore?.long_score ?? 0
   const shortScoreV = shortScore?.short_score ?? 0
@@ -70,10 +71,15 @@ export default function ShortScoreWidget({ shortScore }: Props) {
   const conditionEntries = Object.entries(conditions)
 
   return (
-    <div className="aurum-card p-4 flex flex-col gap-3" style={{
+    <div className="flex flex-col gap-3" style={{
+      padding: compact ? '8px' : '16px',
       border: `1px solid ${blocked ? 'var(--border-subtle)' : `${netColor}33`}`,
+      borderRadius: 0,
+      background: 'var(--bg-card)',
       transition: 'border-color 0.3s ease',
       animation: 'cardMount 0.4s ease-out forwards',
+      maxHeight: compact ? '100%' : 'none',
+      overflow: compact ? 'hidden' : 'visible',
     }}>
       <div className="flex items-center justify-between">
         <div className="section-label">Trade Confluence Score Engine</div>
@@ -177,7 +183,7 @@ export default function ShortScoreWidget({ shortScore }: Props) {
       )}
 
       {/* Interaction note */}
-      {interaction && interaction !== 'none' && !interaction.toLowerCase().startsWith('none') && (
+      {!compact && interaction && interaction !== 'none' && !interaction.toLowerCase().startsWith('none') && (
         <div className="px-2 py-1.5 rounded" style={{
           background: 'rgba(245,158,11,0.08)',
           border: '1px solid rgba(245,158,11,0.3)',
@@ -189,7 +195,7 @@ export default function ShortScoreWidget({ shortScore }: Props) {
       )}
 
       {/* BLOCKED warning banner */}
-      {blocked && (
+      {!compact && blocked && (
         <div className="px-3 py-2 rounded" style={{
           background: 'rgba(107,114,128,0.15)',
           border: '1px solid rgba(107,114,128,0.4)',
@@ -202,6 +208,7 @@ export default function ShortScoreWidget({ shortScore }: Props) {
       )}
 
       {/* Pre-conditions row */}
+      {!compact && (
       <div className="flex flex-col gap-1">
         <div style={{ fontSize: '13px' }} className="text-[var(--text-label)]">Pre-Conditions (hard filters — apply to both directions)</div>
         <div className="flex flex-col gap-1">
@@ -226,8 +233,10 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           </div>
         )}
       </div>
+      )}
 
       {/* Toggle button — collapsed by default to declutter the Tab 1 widget */}
+      {!compact && (
       <button
         onClick={() => setShowConditions(v => !v)}
         style={{
@@ -248,9 +257,10 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           ? '▲ HIDE CONDITIONS'
           : `▼ SHOW ALL CONDITIONS (${(shortScore?.long_conditions_met ?? 0) + (shortScore?.short_conditions_met ?? 0)}/${(shortScore?.total_conditions ?? 10) * 2} MET)`}
       </button>
+      )}
 
       {/* 10-condition grid — both L and S columns per row */}
-      {showConditions && (
+      {!compact && showConditions && (
         <div className="flex flex-col gap-1.5">
           <div style={{ fontSize: '13px' }} className="text-[var(--text-label)]">Confluence Conditions (Long vs Short)</div>
           {conditionEntries.map(([key, c]) => {
@@ -294,6 +304,7 @@ export default function ShortScoreWidget({ shortScore }: Props) {
       )}
 
       {/* Data sources live / missing — honest audit trail */}
+      {!compact && (
       <div className="flex flex-col gap-1" style={{ fontSize: '12px' }}>
         <div className="flex flex-wrap gap-1 items-center">
           <span className="text-[var(--text-label)]">LIVE:</span>
@@ -308,7 +319,9 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           )) : <span className="text-[var(--text-muted)]">none — full data coverage</span>}
         </div>
       </div>
+      )}
 
+      {!compact && (
       <div className="flex items-center justify-between text-[var(--text-muted)]" style={{ fontSize: '12px' }}>
         <span>
           {calibration?.status === 'calibrated' && calibration?.calibrated_at
@@ -319,6 +332,7 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           <span>updated {new Date(shortScore.timestamp).toLocaleTimeString()}</span>
         )}
       </div>
+      )}
     </div>
   )
 }

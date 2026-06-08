@@ -138,10 +138,10 @@ export function IntelligenceBrief() {
             border:     `1px solid ${isBull ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
           }}>
             <div style={{
-              fontSize:      'clamp(0.85rem, 1.5vw, 1.1rem)',
+              fontSize:      '16px',
               fontWeight:    700,
               color:         isBull ? '#22c55e' : '#ef4444',
-              lineHeight:    1.4,
+              lineHeight:    1.8,
               letterSpacing: '0.03em',
             }}>
               {brief.headline}
@@ -173,7 +173,7 @@ export function IntelligenceBrief() {
               SITUATION
             </div>
             <p style={{
-              fontSize:      '0.7rem',
+              fontSize:      '13px',
               color:         '#c0c8d8',
               lineHeight:    1.7,
               letterSpacing: '0.02em',
@@ -195,7 +195,7 @@ export function IntelligenceBrief() {
                 {brief.supporting_gold?.map((factor, i) => (
                   <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                     <span style={{ color: '#22c55e', flexShrink: 0, fontSize: '0.55rem', marginTop: '1px' }}>●</span>
-                    <span style={{ fontSize: '0.62rem', color: '#a0b0a8', lineHeight: 1.5, letterSpacing: '0.02em' }}>
+                    <span style={{ fontSize: '13px', color: '#a0b0a8', lineHeight: 1.6, letterSpacing: '0.02em' }}>
                       {factor}
                     </span>
                   </div>
@@ -212,7 +212,7 @@ export function IntelligenceBrief() {
                 {brief.pressuring_gold?.map((factor, i) => (
                   <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                     <span style={{ color: '#ef4444', flexShrink: 0, fontSize: '0.55rem', marginTop: '1px' }}>●</span>
-                    <span style={{ fontSize: '0.62rem', color: '#b0a0a0', lineHeight: 1.5, letterSpacing: '0.02em' }}>
+                    <span style={{ fontSize: '13px', color: '#b0a0a0', lineHeight: 1.6, letterSpacing: '0.02em' }}>
                       {factor}
                     </span>
                   </div>
@@ -231,9 +231,9 @@ export function IntelligenceBrief() {
               ⚡ KEY TENSION
             </div>
             <p style={{
-              fontSize:      '0.68rem',
+              fontSize:      '14px',
               color:         '#c8b88a',
-              lineHeight:    1.7,
+              lineHeight:    1.8,
               letterSpacing: '0.02em',
               margin:        0,
             }}>
@@ -251,10 +251,10 @@ export function IntelligenceBrief() {
               ◆ BOTTOM LINE
             </div>
             <p style={{
-              fontSize:      '0.72rem',
+              fontSize:      '15px',
               fontWeight:    600,
               color:         '#e0c8b8',
-              lineHeight:    1.6,
+              lineHeight:    1.7,
               letterSpacing: '0.02em',
               margin:        0,
             }}>
@@ -268,7 +268,7 @@ export function IntelligenceBrief() {
               <div style={{ fontSize: '0.48rem', color: '#4a5068', letterSpacing: '0.15em', marginBottom: '6px' }}>
                 👁 WATCH FOR
               </div>
-              <p style={{ fontSize: '0.6rem', color: '#8892a4', lineHeight: 1.5, margin: 0, letterSpacing: '0.02em' }}>
+              <p style={{ fontSize: '13px', color: '#8892a4', lineHeight: 1.6, margin: 0, letterSpacing: '0.02em' }}>
                 {brief.watch_for}
               </p>
             </div>
@@ -276,7 +276,7 @@ export function IntelligenceBrief() {
               <div style={{ fontSize: '0.48rem', color: '#4a5068', letterSpacing: '0.15em', marginBottom: '6px' }}>
                 📊 CONFIDENCE NOTE
               </div>
-              <p style={{ fontSize: '0.6rem', color: '#8892a4', lineHeight: 1.5, margin: 0, letterSpacing: '0.02em' }}>
+              <p style={{ fontSize: '13px', color: '#8892a4', lineHeight: 1.6, margin: 0, letterSpacing: '0.02em' }}>
                 {brief.confidence_note}
               </p>
             </div>

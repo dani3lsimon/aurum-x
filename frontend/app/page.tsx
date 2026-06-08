@@ -14,11 +14,31 @@ import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 
 type TabId = 'live' | 'chart' | 'analysis'
 
+function ProbBox({ value, label, color, sub }: { value?: number; label: string; color: string; sub: string }) {
+  return (
+    <div className="aurum-card" style={{ textAlign: 'center', padding: '20px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ fontSize: '11px', color: '#4a5068', letterSpacing: '0.2em', marginBottom: '8px' }}>{label} PROBABILITY</div>
+      <div style={{
+        fontSize: 'clamp(3.5rem, 6vw, 5.5rem)',
+        fontWeight: 800,
+        color,
+        letterSpacing: '-0.03em',
+        lineHeight: 1,
+        textShadow: `0 0 24px ${color}44`,
+      }}>
+        {value?.toFixed(1) ?? '—'}%
+      </div>
+      <div style={{ fontSize: '12px', color: '#4a5068', letterSpacing: '0.12em', marginTop: '8px' }}>{sub}</div>
+    </div>
+  )
+}
+
 export default function Page() {
   const {
     forecast, agentScores, scenarios, alerts, shortScore, loading,
-    ohlcvData, multiTf, orderFlow, chartTf, setChartTf,
+    ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     isConnected, isRefreshing, triggerManualCycle,
+    liveGoldPrice, priceChange,
   } = useForecast()
 
   const [toast, setToast]               = useState<string | null>(null)
@@ -89,14 +109,35 @@ export default function Page() {
           <div className="hidden sm:block text-[var(--text-muted)]" style={{ fontSize: '0.75rem' }}>GOLD MACRO INTELLIGENCE</div>
         </div>
 
-        {/* Centre: gold price hero */}
-        <div className="flex flex-col items-center">
-          <div className="text-[var(--text-label)] mb-0.5" style={{ fontSize: '0.75rem' }}>XAUUSD SPOT</div>
-          <div className="hero-number" style={{ fontSize: '44px', fontWeight: 800 }}>
-            {price > 0
-              ? `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : '---'}
+        {/* Centre: gold price hero — live, polled every 5s direct from OANDA */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.18em', marginBottom: '2px' }}>
+            XAUUSD SPOT
           </div>
+          <div style={{
+            fontSize: '40px',
+            fontWeight: 800,
+            color: '#ff5500',
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
+            textShadow: '0 0 20px rgba(255,80,0,0.35)',
+            transition: 'color 0.3s ease',
+          }}>
+            ${(liveGoldPrice || forecast?.gold_price || 0).toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </div>
+          {priceChange !== 0 && (
+            <div style={{
+              fontSize: '12px',
+              color: priceChange > 0 ? '#22c55e' : '#ef4444',
+              letterSpacing: '0.08em',
+              marginTop: '2px',
+            }}>
+              {priceChange > 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}
+            </div>
+          )}
           {/* Quick-stats strip — always visible regardless of active tab */}
           <div style={{ fontSize: '13px', color: '#6b7494', display: 'flex', gap: '16px', alignItems: 'center', marginTop: '4px' }}>
             <span>BULL <strong style={{ color: '#22c55e' }}>{bull.toFixed(0)}%</strong></span>
@@ -196,43 +237,33 @@ export default function Page() {
         ))}
       </nav>
 
-      {/* ── Tab 1: LIVE ──────────────────────────────────────────────────── */}
+      {/* ── Tab 1: LIVE — fixed-height grid, fits one screen, no scrolling ── */}
       {activeTab === 'live' && (
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+        <div style={{
+          padding: '12px 16px',
+          height: 'calc(100vh - 110px)',
+          display: 'grid',
+          gridTemplateRows: 'auto 1fr',
+          gridTemplateColumns: '1fr',
+          gap: '8px',
+          overflow: 'hidden',
+        }}>
 
-          {/* Row 1: 3 giant inline probability panels */}
+          {/* Row 1: Probabilities */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            {[
-              { label: 'BULLISH PROBABILITY', val: bull, color: '#22c55e' },
-              { label: 'BEARISH PROBABILITY', val: bear, color: '#ef4444' },
-              { label: 'NEUTRAL PROBABILITY', val: 100 - bull - bear, color: '#94a3b8' },
-            ].map(b => (
-              <div key={b.label} className="aurum-card p-4 flex flex-col items-center justify-center gap-2" style={{
-                border: isRefreshing ? '1px solid rgba(255,80,0,0.6)' : '1px solid var(--border-subtle)',
-                transition: 'border-color 0.3s ease',
-                animation: isRefreshing ? 'glowPulse 1s ease-in-out infinite' : 'cardMount 0.4s ease-out forwards',
-                minHeight: '220px',
-              }}>
-                <div style={{ fontSize: '14px', letterSpacing: '0.2em', color: 'var(--text-label)' }}>{b.label}</div>
-                <div className="hero-number" style={{ fontSize: 'clamp(5rem, 9vw, 8rem)', color: b.color, textShadow: `0 0 24px ${b.color}66` }}>
-                  {b.val.toFixed(0)}<span style={{ fontSize: '0.4em' }}>%</span>
-                </div>
-              </div>
-            ))}
+            <ProbBox value={forecast?.bullish_prob} label="BULLISH" color="#22c55e" sub={`${(forecast?.forecast_momentum ?? 0) >= 0 ? '+' : ''}${(forecast?.forecast_momentum ?? 0).toFixed(1)} MOM`} />
+            <ProbBox value={forecast?.bearish_prob} label="BEARISH" color="#ef4444" sub={`CONF ${(forecast?.confidence_score ?? 0).toFixed(0)}%`} />
+            <ProbBox value={forecast?.neutral_prob} label="NEUTRAL" color="#6b7494" sub={`VOL ${(forecast?.volatility_score ?? 0).toFixed(0)}/100`} />
           </div>
 
-          {/* Row 2: Signal engine (left, 3fr) + right column stack */}
-          <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '8px', alignItems: 'start' }}>
-            <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-              <ShortScoreWidget shortScore={shortScore} />
+          {/* Row 2: Signal + Right column — fills remaining space */}
+          <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '8px', minHeight: 0 }}>
+            <div style={{ overflow: 'hidden', minHeight: 0 }}>
+              <ShortScoreWidget shortScore={shortScore} compact={true} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-              <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-                <RegimeClassifier forecast={forecast} />
-              </div>
-              <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-                <AlertsFeed alerts={alerts.slice(0, 3)} compact={true} />
-              </div>
+            <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: '8px', minHeight: 0 }}>
+              <RegimeClassifier forecast={forecast} regimeData={shortScore?.regime_info} />
+              <AlertsFeed alerts={alerts.slice(0, 3)} compact={true} />
             </div>
           </div>
         </div>
@@ -245,6 +276,7 @@ export default function Page() {
             <ForecastChart
               forecast={forecast}
               ohlcvData={ohlcvData}
+              setOhlcvData={setOhlcvData}
               orderFlow={orderFlow}
               chartTf={chartTf}
               onTfChange={setChartTf}

@@ -158,41 +158,19 @@ export default function COTPanel() {
             </div>
           )}
 
-          {/* Key metrics */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+          {/* Key metrics — 4 clean boxes, single row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
             {[
-              { label: 'MM NET LONG',  value: `${latest.mm_net >= 0 ? '+' : ''}${(latest.mm_net / 1000).toFixed(1)}K`, color: latest.mm_net >= 0 ? '#22c55e' : '#ef4444' },
-              { label: 'MM % OF OI',   value: `${latest.mm_net_pct_oi}%`, color: '#ffb347' },
-              { label: 'MM LONG/SHORT',value: `${(latest.mm_long/1000).toFixed(0)}K / ${(latest.mm_short/1000).toFixed(0)}K`, color: '#6b7494' },
-              { label: 'OPEN INTEREST',value: `${(latest.open_interest/1000).toFixed(0)}K`, color: '#6b7494' },
+              { label: 'MM NET',   value: `${latest.mm_net >= 0 ? '+' : ''}${(latest.mm_net / 1000).toFixed(1)}K`, color: latest.mm_net >= 0 ? '#22c55e' : '#ef4444' },
+              { label: '% OF OI',  value: `${latest.mm_net_pct_oi}%`, color: '#ffb347' },
+              { label: '8W TREND', value: cot?.trend_8w?.toUpperCase() ?? '—', color: cot?.trend_8w === 'up' ? '#22c55e' : '#ef4444' },
+              { label: 'STREAK',   value: `${cot?.current_streak ?? '—'}W ${cot?.streak_direction?.toUpperCase() ?? ''}`, color: '#ffb347' },
             ].map(m => (
-              <div key={m.label} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
-                <div style={{ fontSize: '0.62rem', color: '#4a5068', letterSpacing: '0.1em', marginBottom: '3px' }}>{m.label}</div>
-                <div style={{ fontSize: FS.value, fontWeight: 700, color: m.color }}>{m.value}</div>
+              <div key={m.label} style={{ background: '#06070b', border: '1px solid rgba(255,80,0,0.08)', padding: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.14em', marginBottom: '5px' }}>{m.label}</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: m.color }}>{m.value}</div>
               </div>
             ))}
-          </div>
-
-          {/* Trend / streak / range */}
-          <div className="flex justify-between items-center" style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
-            <div>
-              <div style={{ fontSize: '0.62rem', color: '#4a5068', letterSpacing: '0.1em' }}>8W TREND</div>
-              <div style={{ fontSize: FS.value, fontWeight: 700, color: cot?.trend_8w === 'up' ? '#22c55e' : '#ef4444', marginTop: '2px' }}>
-                {cot?.trend_8w === 'up' ? '▲' : '▼'} {cot?.trend_8w?.toUpperCase()}
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.62rem', color: '#4a5068', letterSpacing: '0.1em' }}>STREAK</div>
-              <div style={{ fontSize: FS.value, fontWeight: 700, color: '#ffb347', marginTop: '2px' }}>
-                {cot?.current_streak}W {cot?.streak_direction?.toUpperCase()}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.62rem', color: '#4a5068', letterSpacing: '0.1em' }}>RANGE %</div>
-              <div style={{ fontSize: FS.value, fontWeight: 700, color: '#ffb347', marginTop: '2px' }}>
-                {cot?.pct_of_8w_range}%
-              </div>
-            </div>
           </div>
 
           {/* Sparkline — 8 week MM net */}

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, ShortScore, WSMessage, OHLCVBar, MultiTfSignal, OrderFlowData } from '@/lib/types'
 import { useWebSocket } from './useWebSocket'
 
@@ -20,6 +20,29 @@ export function useForecast() {
   const [loading,      setLoading]      = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { isConnected, lastMessage }    = useWebSocket(WS_URL)
+
+  // ── Live gold price — polled directly from OANDA every 5 seconds ──────────
+  const [liveGoldPrice, setLiveGoldPrice] = useState<number>(0)
+  const [priceChange,   setPriceChange]   = useState<number>(0)
+  const prevPriceRef = useRef<number>(0)
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const r = await fetch(`${BACKEND}/market/orderflow`)
+        const d = await r.json()
+        const p = d.current_price || d.bid || 0
+        if (p > 0) {
+          setPriceChange(p - (prevPriceRef.current || p))
+          prevPriceRef.current = p
+          setLiveGoldPrice(p)
+        }
+      } catch {}
+    }
+    poll()
+    const interval = setInterval(poll, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Fetch OHLCV candles on mount and whenever the chart timeframe changes
   useEffect(() => {
@@ -213,7 +236,8 @@ export function useForecast() {
 
   return {
     forecast, agentScores, scenarios, alerts, releases, shortScore,
-    ohlcvData, multiTf, orderFlow, chartTf, setChartTf,
+    ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     loading, isConnected, isRefreshing, triggerManualCycle,
+    liveGoldPrice, priceChange,
   }
 }

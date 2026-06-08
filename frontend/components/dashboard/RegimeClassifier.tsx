@@ -1,74 +1,74 @@
 'use client'
-import { Forecast } from '@/lib/types'
+import { Forecast, RegimeInfo } from '@/lib/types'
 
-interface Props { forecast: Forecast | null }
+interface Props { forecast: Forecast | null; regimeData?: RegimeInfo }
 
-const REGIME_CONFIG: Record<string, { color: string; bg: string; label: string; desc: string }> = {
-  inflation_shock:       { color: '#ff4400', bg: 'rgba(255,68,0,0.12)',    label: 'INFLATION SHOCK',      desc: 'High CPI — Gold bullish' },
-  disinflation:          { color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)',  label: 'DISINFLATION',         desc: 'Falling inflation — Mixed' },
-  recession_risk:        { color: '#ff4d7a', bg: 'rgba(255,77,122,0.12)', label: 'RECESSION RISK',        desc: 'Growth slowdown — Gold bullish' },
-  growth_expansion:      { color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', label: 'GROWTH EXPANSION',      desc: 'Risk-on — Gold bearish' },
-  liquidity_expansion:   { color: '#22c55e', bg: 'rgba(34,197,94,0.12)',  label: 'LIQUIDITY EXPANSION',   desc: 'QE/stimulus — Gold bullish' },
-  liquidity_contraction: { color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  label: 'LIQUIDITY CONTRACTION', desc: 'QT active — Gold bearish' },
-  rate_hike_cycle:       { color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  label: 'RATE HIKE CYCLE',       desc: 'Tightening — Gold bearish' },
-  rate_cut_cycle:        { color: '#22c55e', bg: 'rgba(34,197,94,0.12)',  label: 'RATE CUT CYCLE',        desc: 'Easing — Gold bullish' },
-  geopolitical_crisis:   { color: '#ffb347', bg: 'rgba(255,179,71,0.12)', label: 'GEOPOLITICAL CRISIS',   desc: 'Safe haven demand — Gold bullish' },
-  risk_off:              { color: '#ffb347', bg: 'rgba(255,179,71,0.12)', label: 'RISK OFF',              desc: 'Flight to safety — Gold bullish' },
-  unknown:               { color: '#4a5068', bg: 'rgba(74,80,104,0.1)',   label: 'REGIME UNKNOWN',        desc: 'Insufficient data' },
+const REGIME_COLORS: Record<string, string> = {
+  inflation_shock:        '#ff7744',
+  disinflation:           '#60a5fa',
+  recession_risk:         '#fbbf24',
+  growth_expansion:       '#22c55e',
+  liquidity_expansion:    '#2dd4bf',
+  liquidity_contraction:  '#ef4444',
+  rate_hike_cycle:        '#ef4444',
+  rate_cut_cycle:         '#ffb347',
+  geopolitical_crisis:    '#c084fc',
+  risk_off:               '#ffb347',
+  unknown:                '#4a5068',
 }
 
-export default function RegimeClassifier({ forecast }: Props) {
-  const regime = forecast?.macro_regime ?? 'unknown'
-  const cfg = REGIME_CONFIG[regime] ?? REGIME_CONFIG['unknown']
+const REGIME_DESC: Record<string, string> = {
+  inflation_shock:        'Accelerating inflation — safe haven demand',
+  disinflation:           'Falling inflation — gold premium reducing',
+  recession_risk:         'Growth concerns — safe haven flows active',
+  growth_expansion:       'Risk-on — capital rotating away from gold',
+  liquidity_expansion:    'Central bank easing — supportive for gold',
+  liquidity_contraction:  'Tightening conditions — gold headwind',
+  rate_hike_cycle:        'Rising rates — opportunity cost rising',
+  rate_cut_cycle:         'Easing cycle — historically bullish gold',
+  geopolitical_crisis:    'Geopolitical risk premium active',
+  risk_off:               'Risk aversion — safe haven flows',
+  unknown:                'Regime classification in progress',
+}
+
+export default function RegimeClassifier({ forecast, regimeData }: Props) {
+  const regime     = regimeData?.regime || forecast?.macro_regime || 'unknown'
+  const confidence = regimeData?.confidence || 0
+  const stable     = regimeData?.blocked_by_hysteresis === false
+
+  const color = REGIME_COLORS[regime] || '#4a5068'
+  const desc  = REGIME_DESC[regime]   || ''
+  const label = regime.replace(/_/g, ' ').toUpperCase()
 
   return (
-    <div className="aurum-card p-4 flex flex-col gap-3">
-      <div className="section-label">Macro Regime</div>
-
-      {/* Active regime highlight */}
-      <div className="p-3 flex flex-col gap-2" style={{ background: cfg.bg, border: `1px solid ${cfg.color}50` }}>
-        <div style={{ color: cfg.color, fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.12em' }}>
-          {cfg.label}
-        </div>
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'none', lineHeight: 1.4 }}>
-          {cfg.desc}
-        </div>
+    <div className="aurum-card" style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderColor: `${color}22` }}>
+      <div style={{ fontSize: '11px', color: '#4a5068', letterSpacing: '0.18em', marginBottom: '10px' }}>
+        MACRO REGIME
       </div>
 
-      {/* All regimes — single column, readable */}
-      <div className="flex flex-col gap-1">
-        {Object.entries(REGIME_CONFIG)
-          .filter(([k]) => k !== 'unknown')
-          .map(([key, c]) => {
-            const isActive = key === regime
-            return (
-              <div
-                key={key}
-                className="flex items-center gap-2 px-2 py-1"
-                style={{
-                  background: isActive ? c.bg : 'transparent',
-                  border: `1px solid ${isActive ? c.color + '50' : 'transparent'}`,
-                }}
-              >
-                <div
-                  className="shrink-0"
-                  style={{
-                    width: '6px', height: '6px', borderRadius: '50%',
-                    background: isActive ? c.color : '#2a2d3a',
-                    boxShadow: isActive ? `0 0 6px ${c.color}` : 'none',
-                  }}
-                />
-                <div style={{
-                  color: isActive ? c.color : '#4a5068',
-                  fontSize: '0.68rem',
-                  letterSpacing: '0.08em',
-                  fontWeight: isActive ? 600 : 400,
-                }}>
-                  {c.label}
-                </div>
-              </div>
-            )
-          })}
+      <div style={{
+        fontSize: 'clamp(1.2rem, 2vw, 1.8rem)',
+        fontWeight: 800,
+        color,
+        letterSpacing: '0.06em',
+        lineHeight: 1.2,
+        marginBottom: '8px',
+      }}>
+        {label}
+      </div>
+
+      <div style={{ fontSize: '12px', color: '#6b7494', lineHeight: 1.5, letterSpacing: '0.04em', flex: 1 }}>
+        {desc}
+      </div>
+
+      <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '11px', color: '#4a5068', letterSpacing: '0.1em' }}>
+          {confidence > 0 ? `${confidence.toFixed(0)}% CONF` : ''}
+          {stable ? ' · ✓ STABLE' : ''}
+        </div>
+        <div style={{ fontSize: '11px', color: '#4a5068', letterSpacing: '0.1em' }}>
+          24H ROLLING
+        </div>
       </div>
     </div>
   )

@@ -5,11 +5,12 @@ import { Forecast, OHLCVBar, OrderFlowData } from '@/lib/types'
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 interface Props {
-  forecast:   Forecast | null
-  ohlcvData:  OHLCVBar[]
-  orderFlow?: OrderFlowData | null
-  chartTf:    '15m' | '1h' | '4h' | '1d'
-  onTfChange: (tf: '15m' | '1h' | '4h' | '1d') => void
+  forecast:     Forecast | null
+  ohlcvData:    OHLCVBar[]
+  setOhlcvData?: (updater: (prev: OHLCVBar[]) => OHLCVBar[]) => void
+  orderFlow?:   OrderFlowData | null
+  chartTf:      '15m' | '1h' | '4h' | '1d'
+  onTfChange:   (tf: '15m' | '1h' | '4h' | '1d') => void
 }
 
 const TF_TABS: { key: '15m' | '1h' | '4h' | '1d'; label: string }[] = [
@@ -26,7 +27,7 @@ function fmtPrice2(p: number): string {
   return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export default function ForecastChart({ forecast, ohlcvData, orderFlow, chartTf, onTfChange }: Props) {
+export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, orderFlow, chartTf, onTfChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const [dims, setDims] = useState({ w: 0, h: 0 })
@@ -46,6 +47,32 @@ export default function ForecastChart({ forecast, ohlcvData, orderFlow, chartTf,
     const interval = setInterval(fetchPrice, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  // ── Live last-candle update — keeps the current bar's close/high/low ticking ─
+  useEffect(() => {
+    if (!setOhlcvData) return
+    const pollLastCandle = async () => {
+      try {
+        const r = await fetch(`${BACKEND}/market/orderflow`)
+        const d = await r.json()
+        const price = d.current_price
+        if (price) {
+          setOhlcvData(prev => {
+            if (!prev.length) return prev
+            const updated = [...prev]
+            const last = { ...updated[updated.length - 1] }
+            last.close = price
+            if (price > last.high) last.high = price
+            if (price < last.low)  last.low  = price
+            updated[updated.length - 1] = last
+            return updated
+          })
+        }
+      } catch {}
+    }
+    const interval = setInterval(pollLastCandle, 5000)
+    return () => clearInterval(interval)
+  }, [setOhlcvData])
 
   // ── Hover tooltip — OHLCV for the candle under the cursor ───────────────────
   const [tooltip, setTooltip] = useState<{ visible: boolean; x: number; y: number; data: OHLCVBar | null }>({

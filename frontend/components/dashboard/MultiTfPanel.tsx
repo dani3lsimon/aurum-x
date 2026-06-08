@@ -41,16 +41,16 @@ function TfColumn({ label, tf }: { label: string; tf: TfScore | undefined }) {
 
       <div className="flex justify-between items-baseline">
         <div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#22c55e', lineHeight: 1 }}>
+          <div style={{ fontSize: '28px', fontWeight: 700, color: '#22c55e', lineHeight: 1 }}>
             {fmt(longPct, 0)}%
           </div>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>LONG</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>LONG</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#ef4444', lineHeight: 1 }}>
+          <div style={{ fontSize: '28px', fontWeight: 700, color: '#ef4444', lineHeight: 1 }}>
             {fmt(shortPct, 0)}%
           </div>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>SHORT</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>SHORT</div>
         </div>
       </div>
 
@@ -95,7 +95,7 @@ export default function MultiTfPanel({ multiTf }: Props) {
         <div className="flex flex-col gap-2" style={{ minWidth: 0, borderLeft: '1px solid rgba(240,13,23,0.12)', paddingLeft: '14px' }}>
           <div className="section-label">BEST SIGNAL</div>
           <div style={{
-            fontSize: '1.15rem', fontWeight: 800, letterSpacing: '0.04em', lineHeight: 1.15,
+            fontSize: '20px', fontWeight: 800, letterSpacing: '0.04em', lineHeight: 1.15,
             color: dirColor, textShadow: `0 0 14px ${dirColor}66`,
           }}>
             {multiTf?.best_signal ?? '— NO SIGNAL'}
@@ -105,7 +105,7 @@ export default function MultiTfPanel({ multiTf }: Props) {
               TF: {multiTf.best_timeframe.toUpperCase()} · {multiTf.conviction ?? '—'}
             </div>
           )}
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-label)', letterSpacing: '0.04em', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-label)', letterSpacing: '0.04em', display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <span>EDGE <strong style={{ color: '#fff' }}>{fmt(multiTf?.edge_strength, 1)}</strong></span>
             <span>RISK <strong style={{ color: '#fff' }}>{fmt(multiTf?.risk_pct, 2)}%</strong></span>
             <span>STOP <strong style={{ color: '#fff' }}>{multiTf?.stop_loss ? `$${fmt(multiTf.stop_loss, 0)}` : '—'}</strong></span>
