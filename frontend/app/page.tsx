@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useForecast } from '@/hooks/useForecast'
-import ProbabilityGauge  from '@/components/dashboard/ProbabilityGauge'
 import AgentScorePanel   from '@/components/dashboard/AgentScorePanel'
 import RegimeClassifier  from '@/components/dashboard/RegimeClassifier'
 import ForecastRanges    from '@/components/dashboard/ForecastRanges'
@@ -13,7 +12,7 @@ import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
 import MultiTfPanel      from '@/components/dashboard/MultiTfPanel'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 
-type TabId = 'live' | 'agents' | 'analysis'
+type TabId = 'live' | 'chart' | 'analysis'
 
 export default function Page() {
   const {
@@ -29,7 +28,7 @@ export default function Page() {
   // Restore persisted tab from localStorage after mount (avoids SSR/CSR mismatch)
   useEffect(() => {
     const saved = window.localStorage.getItem('aurum_tab') as TabId | null
-    if (saved === 'live' || saved === 'agents' || saved === 'analysis') {
+    if (saved === 'live' || saved === 'chart' || saved === 'analysis') {
       setActiveTab(saved)
     }
   }, [])
@@ -69,8 +68,8 @@ export default function Page() {
   }
 
   const TABS: { id: TabId; label: string }[] = [
-    { id: 'live',     label: '① LIVE DASHBOARD' },
-    { id: 'agents',   label: '② AGENT MATRIX' },
+    { id: 'live',     label: '① LIVE' },
+    { id: 'chart',    label: '② CHART & AGENTS' },
     { id: 'analysis', label: '③ ANALYSIS' },
   ]
 
@@ -197,17 +196,33 @@ export default function Page() {
         ))}
       </nav>
 
-      {/* ── Tab 1: LIVE DASHBOARD ────────────────────────────────────────── */}
+      {/* ── Tab 1: LIVE ──────────────────────────────────────────────────── */}
       {activeTab === 'live' && (
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
 
-          {/* Row 1: 3 huge probability numbers */}
+          {/* Row 1: 3 giant inline probability panels */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} variant="trio" />
+            {[
+              { label: 'BULLISH PROBABILITY', val: bull, color: '#22c55e' },
+              { label: 'BEARISH PROBABILITY', val: bear, color: '#ef4444' },
+              { label: 'NEUTRAL PROBABILITY', val: 100 - bull - bear, color: '#94a3b8' },
+            ].map(b => (
+              <div key={b.label} className="aurum-card p-4 flex flex-col items-center justify-center gap-2" style={{
+                border: isRefreshing ? '1px solid rgba(255,80,0,0.6)' : '1px solid var(--border-subtle)',
+                transition: 'border-color 0.3s ease',
+                animation: isRefreshing ? 'glowPulse 1s ease-in-out infinite' : 'cardMount 0.4s ease-out forwards',
+                minHeight: '220px',
+              }}>
+                <div style={{ fontSize: '14px', letterSpacing: '0.2em', color: 'var(--text-label)' }}>{b.label}</div>
+                <div className="hero-number" style={{ fontSize: 'clamp(5rem, 9vw, 8rem)', color: b.color, textShadow: `0 0 24px ${b.color}66` }}>
+                  {b.val.toFixed(0)}<span style={{ fontSize: '0.4em' }}>%</span>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* Row 2: Signal engine (left) + right column stack */}
-          <div style={{ display: 'grid', gridTemplateColumns: '5fr 4fr', gap: '8px', alignItems: 'start' }}>
+          {/* Row 2: Signal engine (left, 3fr) + right column stack */}
+          <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '8px', alignItems: 'start' }}>
             <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
               <ShortScoreWidget shortScore={shortScore} />
             </div>
@@ -215,49 +230,32 @@ export default function Page() {
               <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
                 <RegimeClassifier forecast={forecast} />
               </div>
-
-              {/* OANDA live strip — 6 metrics */}
-              <div className="aurum-card p-4" style={{ minWidth: 0, overflow: 'hidden' }}>
-                <div className="section-label" style={{ marginBottom: '10px' }}>OANDA Live — XAU/USD</div>
-                <div className="grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', fontSize: '0.7rem', letterSpacing: '0.04em' }}>
-                  <div><span style={{ color: 'var(--text-muted)' }}>PRICE </span><strong>{orderFlow?.current_price ? `$${orderFlow.current_price.toFixed(2)}` : '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)' }}>VWAP </span><strong>{orderFlow?.session_vwap ? `$${orderFlow.session_vwap.toFixed(2)}` : '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)' }}>DELTA </span><strong>{orderFlow?.cumulative_delta ?? '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)' }}>POC </span><strong>{orderFlow?.poc_price ? `$${orderFlow.poc_price.toFixed(2)}` : '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)' }}>VAH </span><strong>{orderFlow?.vah ? `$${orderFlow.vah.toFixed(2)}` : '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)' }}>VAL </span><strong>{orderFlow?.val ? `$${orderFlow.val.toFixed(2)}` : '—'}</strong></div>
-                </div>
-              </div>
-
-              {/* Alert feed — last 3 alerts */}
               <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-                <AlertsFeed alerts={alerts.slice(0, 3)} />
+                <AlertsFeed alerts={alerts.slice(0, 3)} compact={true} />
               </div>
-            </div>
-          </div>
-
-          {/* Forecast chart + Multi-TF — real OANDA price action */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-            <div style={{ minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
-              <ForecastChart
-                forecast={forecast}
-                ohlcvData={ohlcvData}
-                orderFlow={orderFlow}
-                chartTf={chartTf}
-                onTfChange={setChartTf}
-              />
-            </div>
-            <div style={{ minWidth: 0, overflow: 'hidden' }}>
-              <MultiTfPanel multiTf={multiTf} />
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Tab 2: AGENT MATRIX ──────────────────────────────────────────── */}
-      {activeTab === 'agents' && (
-        <div style={{ padding: '20px', flex: 1 }}>
-          <AgentScorePanel scores={agentScores} layout="full" />
+      {/* ── Tab 2: CHART & AGENTS ────────────────────────────────────────── */}
+      {activeTab === 'chart' && (
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+          <div style={{ minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
+            <ForecastChart
+              forecast={forecast}
+              ohlcvData={ohlcvData}
+              orderFlow={orderFlow}
+              chartTf={chartTf}
+              onTfChange={setChartTf}
+            />
+          </div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <MultiTfPanel multiTf={multiTf} />
+          </div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <AgentScorePanel scores={agentScores} layout="full" />
+          </div>
         </div>
       )}
 

@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { ShortScore } from '@/lib/types'
 
 interface Props {
@@ -44,6 +45,7 @@ function GaugeBar({ value, color }: { value: number; color: string }) {
 }
 
 export default function ShortScoreWidget({ shortScore }: Props) {
+  const [showConditions, setShowConditions] = useState(false)
   const longScore   = shortScore?.long_score ?? 0
   const shortScoreV = shortScore?.short_score ?? 0
   const netSignal   = shortScore?.net_signal ?? 'NO TRADE'
@@ -98,13 +100,13 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           opacity: blocked || shortLeading ? 0.55 : 1,
           transition: 'all 0.3s ease',
         }}>
-          <div className="text-xs text-[var(--text-label)]">LONG SCORE</div>
-          <div className="hero-number text-3xl" style={{ color: LONG_COLOR, textShadow: longLeading ? `0 0 18px ${LONG_COLOR}55` : 'none' }}>
-            {longScore.toFixed(1)}<span className="text-base ml-1">%</span>
+          <div style={{ fontSize: '13px' }} className="text-[var(--text-label)]">LONG SCORE</div>
+          <div className="hero-number" style={{ fontSize: 'clamp(3rem, 6vw, 5rem)', color: LONG_COLOR, textShadow: longLeading ? `0 0 18px ${LONG_COLOR}55` : 'none' }}>
+            {longScore.toFixed(1)}<span style={{ fontSize: '0.4em' }} className="ml-1">%</span>
           </div>
           <GaugeBar value={longScore} color={LONG_COLOR} />
-          <div className="flex items-center justify-between text-[10px] text-[var(--text-label)]">
-            <span>{shortScore?.long_conditions_met ?? 0}/{shortScore?.total_conditions ?? 10} met</span>
+          <div className="flex items-center justify-between" style={{ fontSize: '12px' }}>
+            <span className="text-[var(--text-label)]">{shortScore?.long_conditions_met ?? 0}/{shortScore?.total_conditions ?? 10} met</span>
             {goLong && <span className="font-bold" style={{ color: LONG_COLOR }}>▲ LONG SIGNAL</span>}
             {!goLong && shortScore?.scalp_long && <span className="font-bold" style={{ color: '#f59e0b' }}>SCALP LONG</span>}
           </div>
@@ -117,13 +119,13 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           opacity: blocked || longLeading ? 0.55 : 1,
           transition: 'all 0.3s ease',
         }}>
-          <div className="text-xs text-[var(--text-label)]">SHORT SCORE</div>
-          <div className="hero-number text-3xl" style={{ color: SHORT_COLOR, textShadow: shortLeading ? `0 0 18px ${SHORT_COLOR}55` : 'none' }}>
-            {shortScoreV.toFixed(1)}<span className="text-base ml-1">%</span>
+          <div style={{ fontSize: '13px' }} className="text-[var(--text-label)]">SHORT SCORE</div>
+          <div className="hero-number" style={{ fontSize: 'clamp(3rem, 6vw, 5rem)', color: SHORT_COLOR, textShadow: shortLeading ? `0 0 18px ${SHORT_COLOR}55` : 'none' }}>
+            {shortScoreV.toFixed(1)}<span style={{ fontSize: '0.4em' }} className="ml-1">%</span>
           </div>
           <GaugeBar value={shortScoreV} color={SHORT_COLOR} />
-          <div className="flex items-center justify-between text-[10px] text-[var(--text-label)]">
-            <span>{shortScore?.short_conditions_met ?? 0}/{shortScore?.total_conditions ?? 10} met</span>
+          <div className="flex items-center justify-between" style={{ fontSize: '12px' }}>
+            <span className="text-[var(--text-label)]">{shortScore?.short_conditions_met ?? 0}/{shortScore?.total_conditions ?? 10} met</span>
             {goShort && <span className="font-bold" style={{ color: SHORT_COLOR }}>▼ SHORT SIGNAL</span>}
             {!goShort && shortScore?.scalp_short && <span className="font-bold" style={{ color: '#f59e0b' }}>SCALP SHORT</span>}
           </div>
@@ -131,10 +133,12 @@ export default function ShortScoreWidget({ shortScore }: Props) {
       </div>
 
       {/* Net signal banner */}
-      <div className="text-center text-sm font-bold py-2 rounded" style={{
+      <div className="text-center py-2 rounded" style={{
         background: blocked ? 'rgba(107,114,128,0.15)' : `${netColor}1a`,
         border: `1px solid ${blocked ? 'rgba(107,114,128,0.4)' : `${netColor}55`}`,
         color: netColor,
+        fontSize: '22px',
+        fontWeight: 800,
         animation: (goLong || goShort) ? 'glowPulse 1.2s ease-in-out infinite' : 'none',
       }}>
         {blocked ? '⛔ ' : netSignal.includes('LONG') ? '▲ ' : netSignal.includes('SHORT') ? '▼ ' : '◆ '}
@@ -145,28 +149,28 @@ export default function ShortScoreWidget({ shortScore }: Props) {
       {(regimeInfo || posSizing) && (
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1 p-2 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="text-[10px] text-[var(--text-label)]">SMOOTHED REGIME</div>
+            <div style={{ fontSize: '12px' }} className="text-[var(--text-label)]">SMOOTHED REGIME</div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-[var(--text-primary)]">
+              <span style={{ fontSize: '14px' }} className="font-bold text-[var(--text-primary)]">
                 {(regimeInfo?.regime ?? 'unknown').replace(/_/g, ' ')}
               </span>
               {regimeInfo?.confidence != null && (
-                <span className="text-[10px] text-[var(--text-label)]">{regimeInfo.confidence.toFixed(0)}% conf</span>
+                <span style={{ fontSize: '12px' }} className="text-[var(--text-label)]">{regimeInfo.confidence.toFixed(0)}% conf</span>
               )}
               {regimeInfo?.blocked_by_hysteresis && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)' }}>
+                <span style={{ fontSize: '12px', color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)' }} className="font-bold px-1.5 py-0.5 rounded">
                   ⟳ HOLDING
                 </span>
               )}
             </div>
           </div>
           <div className="flex flex-col gap-1 p-2 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="text-[10px] text-[var(--text-label)]">POSITION SIZE SUGGESTION</div>
+            <div style={{ fontSize: '12px' }} className="text-[var(--text-label)]">POSITION SIZE SUGGESTION</div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-[var(--text-primary)]">
+              <span style={{ fontSize: '14px' }} className="font-bold text-[var(--text-primary)]">
                 {posSizing?.risk_pct != null ? `${posSizing.risk_pct.toFixed(2)}%` : '—'}
               </span>
-              <span className="text-[10px] text-[var(--text-label)]">{posSizing?.label ?? ''}</span>
+              <span style={{ fontSize: '12px' }} className="text-[var(--text-label)]">{posSizing?.label ?? ''}</span>
             </div>
           </div>
         </div>
@@ -174,10 +178,11 @@ export default function ShortScoreWidget({ shortScore }: Props) {
 
       {/* Interaction note */}
       {interaction && interaction !== 'none' && !interaction.toLowerCase().startsWith('none') && (
-        <div className="text-[10px] px-2 py-1.5 rounded" style={{
+        <div className="px-2 py-1.5 rounded" style={{
           background: 'rgba(245,158,11,0.08)',
           border: '1px solid rgba(245,158,11,0.3)',
           color: '#f59e0b',
+          fontSize: '12px',
         }}>
           ⚡ {interaction}
         </div>
@@ -185,10 +190,11 @@ export default function ShortScoreWidget({ shortScore }: Props) {
 
       {/* BLOCKED warning banner */}
       {blocked && (
-        <div className="text-xs px-3 py-2 rounded" style={{
+        <div className="px-3 py-2 rounded" style={{
           background: 'rgba(107,114,128,0.15)',
           border: '1px solid rgba(107,114,128,0.4)',
           color: '#9ca3af',
+          fontSize: '13px',
         }}>
           ⛔ <span className="font-bold">BOTH DIRECTIONS BLOCKED</span> — one or more pre-conditions failed.
           No long or short signal fires regardless of confluence scores until the safety net clears.
@@ -197,10 +203,10 @@ export default function ShortScoreWidget({ shortScore }: Props) {
 
       {/* Pre-conditions row */}
       <div className="flex flex-col gap-1">
-        <div className="text-xs text-[var(--text-label)]">Pre-Conditions (hard filters — apply to both directions)</div>
+        <div style={{ fontSize: '13px' }} className="text-[var(--text-label)]">Pre-Conditions (hard filters — apply to both directions)</div>
         <div className="flex flex-col gap-1">
           {Object.entries(preConds).map(([key, pc]) => (
-            <div key={key} className="flex items-center justify-between text-xs px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div key={key} className="flex items-center justify-between px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)', fontSize: '13px' }}>
               <span className="flex items-center gap-2">
                 <span style={{
                   display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%',
@@ -215,54 +221,80 @@ export default function ShortScoreWidget({ shortScore }: Props) {
           ))}
         </div>
         {spreadInfo && (
-          <div className="text-[10px] text-[var(--text-muted)] px-2">
+          <div style={{ fontSize: '12px' }} className="text-[var(--text-muted)] px-2">
             spread ${spreadInfo.current_spread ?? '—'} / threshold ${spreadInfo.threshold} ({spreadInfo.account_type} account)
           </div>
         )}
       </div>
 
+      {/* Toggle button — collapsed by default to declutter the Tab 1 widget */}
+      <button
+        onClick={() => setShowConditions(v => !v)}
+        style={{
+          background: 'rgba(255,80,0,0.08)',
+          border: '1px solid rgba(255,80,0,0.3)',
+          borderRadius: '2px',
+          color: '#ff6633',
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '12px',
+          letterSpacing: '0.12em',
+          padding: '6px 12px',
+          cursor: 'pointer',
+          textTransform: 'uppercase',
+          textAlign: 'center',
+        }}
+      >
+        {showConditions
+          ? '▲ HIDE CONDITIONS'
+          : `▼ SHOW ALL CONDITIONS (${(shortScore?.long_conditions_met ?? 0) + (shortScore?.short_conditions_met ?? 0)}/${(shortScore?.total_conditions ?? 10) * 2} MET)`}
+      </button>
+
       {/* 10-condition grid — both L and S columns per row */}
-      <div className="flex flex-col gap-1.5">
-        <div className="text-xs text-[var(--text-label)]">Confluence Conditions (Long vs Short)</div>
-        {conditionEntries.map(([key, c]) => {
-          const winningLong  = c.direction === 'long'
-          const winningShort = c.direction === 'short'
-          return (
-            <div key={key} className="flex flex-col gap-1 px-2 py-1.5 rounded" style={{ background: 'rgba(255,255,255,0.03)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-[var(--text-secondary)]" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {CONDITION_LABELS[key] ?? key}
-                </span>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{
-                    color: winningLong ? '#fff' : LONG_COLOR,
-                    background: winningLong ? LONG_COLOR : `${LONG_COLOR}1a`,
-                    opacity: winningLong ? 1 : 0.45,
-                  }}>
-                    L {c.long_met ? `+${c.points}` : '0'}
+      {showConditions && (
+        <div className="flex flex-col gap-1.5">
+          <div style={{ fontSize: '13px' }} className="text-[var(--text-label)]">Confluence Conditions (Long vs Short)</div>
+          {conditionEntries.map(([key, c]) => {
+            const winningLong  = c.direction === 'long'
+            const winningShort = c.direction === 'short'
+            return (
+              <div key={key} className="flex flex-col gap-1 px-2 py-1.5 rounded" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span style={{ fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} className="text-[var(--text-secondary)]">
+                    {CONDITION_LABELS[key] ?? key}
                   </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{
-                    color: winningShort ? '#fff' : SHORT_COLOR,
-                    background: winningShort ? SHORT_COLOR : `${SHORT_COLOR}1a`,
-                    opacity: winningShort ? 1 : 0.45,
-                  }}>
-                    S {c.short_met ? `+${c.points}` : '0'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="font-bold px-1.5 py-0.5 rounded" style={{
+                      fontSize: '12px',
+                      color: winningLong ? '#fff' : LONG_COLOR,
+                      background: winningLong ? LONG_COLOR : `${LONG_COLOR}1a`,
+                      opacity: winningLong ? 1 : 0.45,
+                    }}>
+                      L {c.long_met ? `+${c.points}` : '0'}
+                    </span>
+                    <span className="font-bold px-1.5 py-0.5 rounded" style={{
+                      fontSize: '12px',
+                      color: winningShort ? '#fff' : SHORT_COLOR,
+                      background: winningShort ? SHORT_COLOR : `${SHORT_COLOR}1a`,
+                      opacity: winningShort ? 1 : 0.45,
+                    }}>
+                      S {c.short_met ? `+${c.points}` : '0'}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} className="text-[var(--text-label)]">
+                  {String(c.value ?? 'unavailable')}
+                </div>
+                <div style={{ fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} className="text-[var(--text-muted)]">
+                  {c.threshold} · src: {c.source}
                 </div>
               </div>
-              <div className="text-[10px] text-[var(--text-label)]" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {String(c.value ?? 'unavailable')}
-              </div>
-              <div className="text-[10px] text-[var(--text-muted)]" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {c.threshold} · src: {c.source}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Data sources live / missing — honest audit trail */}
-      <div className="flex flex-col gap-1 text-[10px]">
+      <div className="flex flex-col gap-1" style={{ fontSize: '12px' }}>
         <div className="flex flex-wrap gap-1 items-center">
           <span className="text-[var(--text-label)]">LIVE:</span>
           {live.length > 0 ? live.map(s => (
@@ -277,7 +309,7 @@ export default function ShortScoreWidget({ shortScore }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+      <div className="flex items-center justify-between text-[var(--text-muted)]" style={{ fontSize: '12px' }}>
         <span>
           {calibration?.status === 'calibrated' && calibration?.calibrated_at
             ? `Calibrated: ${new Date(calibration.calibrated_at).toLocaleDateString()} · ${calibration.bars_used ?? '—'} bars`

@@ -33,6 +33,7 @@ html, body {
   min-height:     100vh;
   letter-spacing: 0.02em;
   font-size:      13px; /* 27-inch base scale — body text minimum 13px everywhere */
+  min-width:      1200px;
 }
 
 /* ── Scanline overlay ──────────────────────────────────────────────── */
@@ -91,8 +92,8 @@ body::after {
 }
 
 .section-label {
-  font-size:      0.75rem; /* 27-inch base scale */
-  letter-spacing: 0.2em;   /* 27-inch base scale */
+  font-size:      12px;
+  letter-spacing: 0.18em;
   color:          var(--text-label);
   font-weight:    500;
   display:        flex;
@@ -106,7 +107,7 @@ body::after {
 }
 
 .live-badge {
-  font-size:      0.7rem; /* 27-inch base scale */
+  font-size:      12px;
   letter-spacing: 0.15em;
   color:          #ff4400;
   display:        flex;
@@ -120,8 +121,8 @@ body::after {
   background:     rgba(255,80,0,0.12);
   border:         1px solid rgba(255,80,0,0.4);
   border-radius:  2px;
-  padding:        3px 10px;   /* 27-inch base scale */
-  font-size:      0.72rem;    /* 27-inch base scale */
+  padding:        3px 10px;
+  font-size:      12px;
   letter-spacing: 0.1em;
   color:          #ff6633;
   font-weight:    600;

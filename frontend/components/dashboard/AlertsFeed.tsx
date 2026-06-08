@@ -2,7 +2,7 @@
 import { Alert } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 
-interface Props { alerts: Alert[] }
+interface Props { alerts: Alert[]; compact?: boolean }
 
 const SEV_CONFIG = {
   critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.3)', dot: '#ef4444' },
@@ -13,7 +13,7 @@ const SEV_CONFIG = {
 
 const FS = { title: '0.78rem', body: '0.72rem', meta: '0.68rem' }
 
-export default function AlertsFeed({ alerts }: Props) {
+export default function AlertsFeed({ alerts, compact = false }: Props) {
   return (
     <div className="aurum-card p-4 flex flex-col gap-3 h-full">
       <div className="flex items-center justify-between">
@@ -21,7 +21,7 @@ export default function AlertsFeed({ alerts }: Props) {
         {alerts.length > 0 && <div className="live-badge">LIVE</div>}
       </div>
 
-      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: '280px' }}>
+      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: compact ? '180px' : '280px' }}>
         {alerts.length === 0 ? (
           <div className="text-center py-6" style={{ fontSize: FS.body, color: 'var(--text-muted)' }}>
             No alerts — system monitoring active

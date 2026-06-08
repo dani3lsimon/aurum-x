@@ -57,10 +57,10 @@ export default function AgentScorePanel({ scores, layout = 'compact' }: Props) {
                 {/* Card header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="agent-badge">{label}</div>
+                    <div className="agent-badge" style={{ fontSize: '12px' }}>{label}</div>
                     {bias && (
                       <span style={{
-                        fontSize: '0.65rem', letterSpacing: '0.1em', color: biasColor,
+                        fontSize: '12px', letterSpacing: '0.1em', color: biasColor,
                         border: `1px solid ${biasColor}55`, borderRadius: '2px', padding: '2px 8px',
                         background: `${biasColor}14`, textTransform: 'uppercase',
                       }}>
@@ -68,7 +68,7 @@ export default function AgentScorePanel({ scores, layout = 'compact' }: Props) {
                       </span>
                     )}
                   </div>
-                  <div className="font-bold" style={{ color, fontSize: '1.1rem' }}>
+                  <div className="font-bold" style={{ color, fontSize: '36px', fontWeight: 800 }}>
                     {score > 0 ? '+' : ''}{score.toFixed(0)}
                   </div>
                 </div>
@@ -87,20 +87,20 @@ export default function AgentScorePanel({ scores, layout = 'compact' }: Props) {
                 </div>
 
                 {/* Rationale — full text */}
-                <div style={{ fontSize: '0.72rem', lineHeight: 1.5, color: 'var(--text-primary)', textTransform: 'none', letterSpacing: '0.01em', flex: 1 }}>
+                <div style={{ fontSize: '12px', lineHeight: 1.7, color: 'var(--text-primary)', textTransform: 'none', letterSpacing: '0.01em', flex: 1 }}>
                   {agent.rationale || 'Pending analysis...'}
                 </div>
 
                 {/* Key factors */}
                 {factors.length > 0 && (
-                  <ul style={{ fontSize: '0.68rem', lineHeight: 1.5, color: 'var(--text-label)', textTransform: 'none', paddingLeft: '14px', listStyle: 'disc' }}>
+                  <ul style={{ fontSize: '11px', lineHeight: 1.6, color: 'var(--text-label)', textTransform: 'none', paddingLeft: '14px', listStyle: 'disc' }}>
                     {factors.slice(0, 3).map((f, i) => <li key={i} style={{ marginBottom: '2px' }}>{f}</li>)}
                   </ul>
                 )}
 
                 {/* Footer meta — confidence / weight / signal_strength / data_quality */}
                 <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-2"
-                  style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
+                  style={{ fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
                   <span>CONF {conf.toFixed(0)}% · WEIGHT {weight}%</span>
                   <span>
                     {raw.signal_strength ? `STRENGTH ${String(raw.signal_strength).toUpperCase()}` : ''}
