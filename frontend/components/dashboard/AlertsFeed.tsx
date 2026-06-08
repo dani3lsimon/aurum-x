@@ -11,7 +11,7 @@ const SEV_CONFIG = {
   low:      { color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', border: 'rgba(148,163,184,0.2)', dot: '#94a3b8' },
 }
 
-const FS = { title: '0.78rem', body: '0.72rem', meta: '0.68rem' }
+const FS = { title: '13px', body: '12px', meta: '11px' }
 
 export default function AlertsFeed({ alerts, compact = false }: Props) {
   return (
@@ -36,8 +36,8 @@ export default function AlertsFeed({ alerts, compact = false }: Props) {
             return (
               <div
                 key={alert.id ?? i}
-                className="flex gap-3 p-3"
-                style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}
+                className="flex gap-3"
+                style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, padding: '10px 12px' }}
               >
                 <div style={{ marginTop: '3px', flexShrink: 0 }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: cfg.dot, boxShadow: `0 0 6px ${cfg.dot}` }} />

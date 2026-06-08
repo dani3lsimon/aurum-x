@@ -39,6 +39,7 @@ export default function Page() {
     ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     isConnected, isRefreshing, triggerManualCycle,
     liveGoldPrice, priceChange, wsStatus,
+    lastTickPrice,
   } = useForecast()
 
   const [toast, setToast]               = useState<string | null>(null)
@@ -283,32 +284,42 @@ export default function Page() {
               orderFlow={orderFlow}
               chartTf={chartTf}
               onTfChange={setChartTf}
+              lastTickPrice={lastTickPrice}
             />
           </div>
           <div style={{ minWidth: 0, overflow: 'hidden' }}>
             <MultiTfPanel multiTf={multiTf} />
           </div>
-          <div style={{ minWidth: 0, overflow: 'hidden' }}>
-            <AgentScorePanel scores={agentScores} layout="full" />
+          <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px', minWidth: 0 }}>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <AgentScorePanel scores={agentScores} layout="full" />
+            </div>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <ForecastRanges forecast={forecast} />
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Tab 3: ANALYSIS ──────────────────────────────────────────────── */}
       {activeTab === 'analysis' && (
-        <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '5fr 4fr', gap: '8px', flex: 1, alignItems: 'start' }}>
-          <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+        <div style={{
+          padding: '12px 16px',
+          height: 'calc(100vh - 110px)',
+          display: 'grid',
+          gridTemplateColumns: '5fr 4fr',
+          gap: '10px',
+          overflow: 'hidden',
+        }}>
+          <div className="aurum-card" style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <IntelligenceBrief />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
             <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
               <ScenarioTree scenarios={scenarios} />
             </div>
             <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
               <COTPanel />
-            </div>
-            <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-              <ForecastRanges forecast={forecast} />
             </div>
           </div>
         </div>

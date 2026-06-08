@@ -31,11 +31,22 @@ export function useForecast() {
   const [wsStatus,      setWsStatus]      = useState<'connected' | 'disconnected' | 'error'>('disconnected')
   const prevPriceRef = useRef<number>(0)
 
+  // Tick buffer for tick-level chart updates (last 1000 ticks)
+  const tickBufferRef = useRef<{ price: number; time: number }[]>([])
+  const [lastTickPrice, setLastTickPrice] = useState<number>(0)
+
   const applyTick = useCallback((price: number) => {
     if (!(price > 0)) return
     setPriceChange(price - (prevPriceRef.current || price))
     prevPriceRef.current = price
     setLiveGoldPrice(price)
+
+    // Push to tick buffer for chart consumption
+    tickBufferRef.current.push({ price, time: Date.now() })
+    if (tickBufferRef.current.length > 1000) {
+      tickBufferRef.current.shift()
+    }
+    setLastTickPrice(price)
   }, [])
 
   useEffect(() => {
@@ -321,5 +332,6 @@ export function useForecast() {
     ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     loading, isConnected, isRefreshing, triggerManualCycle,
     liveGoldPrice, priceChange, wsStatus,
+    lastTickPrice, tickBufferRef,
   }
 }

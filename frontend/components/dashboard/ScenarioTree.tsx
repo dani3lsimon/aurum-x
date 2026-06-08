@@ -36,7 +36,7 @@ export default function ScenarioTree({ scenarios }: Props) {
                   <div className="text-xs font-bold" style={{ color }}>{sc.scenario_label}</div>
                   <div className="agent-badge" style={{ color, borderColor: `${color}60`, background: `${color}12` }}>{tag}</div>
                 </div>
-                <div className="font-bold" style={{ color, fontSize: '22px' }}>{sc.probability}%</div>
+                <div style={{ color, fontSize: '22px', fontWeight: 800 }}>{sc.probability}%</div>
               </div>
 
               <div style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>{sc.scenario_name}</div>
@@ -49,7 +49,7 @@ export default function ScenarioTree({ scenarios }: Props) {
               {/* Target & drivers */}
               <div className="flex justify-between items-start gap-2">
                 {sc.expected_gold_target > 0 && (
-                  <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 700 }}>
                     Target: <span style={{ color }}>${sc.expected_gold_target.toLocaleString()}</span>
                   </div>
                 )}

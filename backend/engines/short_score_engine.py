@@ -495,13 +495,6 @@ class ShortScoreEngine:
         short_pct = round(min(100.0, (short_raw / MAX_SCORE) * 100), 1) if MAX_SCORE else 0.0
         long_pct  = round(min(100.0, (long_raw  / MAX_SCORE) * 100), 1) if MAX_SCORE else 0.0
 
-        # ── Pre-conditions (hard filters) ──────────────────────────────────
-        cot_not_extreme_bull = True
-        cot_value = "CFTC data unavailable — defaulting to not-extreme (fail-open)"
-        if positioning and not positioning.get("error"):
-            cot_not_extreme_bull = not bool(positioning.get("is_extreme_long", False))
-            cot_value = f"is_extreme_long={positioning.get('is_extreme_long')} (pct_of_8w_range={positioning.get('pct_of_8w_range')}%)"
-
         spread_threshold = settings.oanda_spread_threshold
         of_spread        = (orderflow or {}).get("spread")
         if of_spread is not None:
@@ -514,14 +507,14 @@ class ShortScoreEngine:
             spread_acceptable = True
             spread_value = "OANDA spread data unavailable — defaulting to acceptable (fail-open)"
 
+        # ── Pre-conditions (hard filters — block BOTH directions) ──────────
+        # COT is intentionally NOT a universal pre-condition: extreme positioning
+        # is directional (a contrarian signal for one side), not a reason to
+        # block everything. See the directional COT filter below.
         pre_conditions = {
             "no_imminent_news": {
                 "pass":  news_eval["clear"],
                 "value": news_eval["value"],
-            },
-            "cot_not_extreme_bull": {
-                "pass":  cot_not_extreme_bull,
-                "value": cot_value,
             },
             "spread_acceptable": {
                 "pass":  spread_acceptable,
@@ -529,6 +522,37 @@ class ShortScoreEngine:
             },
         }
         pre_conditions_pass = all(p["pass"] for p in pre_conditions.values())
+
+        # ── Directional COT filters — applied to individual scores, not as a hard blocker ──
+        is_extreme_long  = False
+        is_extreme_short = False
+        if positioning and not positioning.get("error"):
+            is_extreme_long  = bool(positioning.get("is_extreme_long",  False))
+            is_extreme_short = bool(positioning.get("is_extreme_short", False))
+
+        # Extreme long positioning suppresses LONG signals (crowded — don't add longs)
+        # Extreme short positioning suppresses SHORT signals (crowded short — don't add shorts)
+        if is_extreme_long and long_pct > 0:
+            long_pct = round(long_pct * 0.5, 1)   # halve the long score — not blocked, just suppressed
+            long_raw = long_raw * 0.5
+
+        if is_extreme_short and short_pct > 0:
+            short_pct = round(short_pct * 0.5, 1)  # halve the short score
+            short_raw = short_raw * 0.5
+
+        cot_directional_filter = {
+            "is_extreme_long":  is_extreme_long,
+            "is_extreme_short": is_extreme_short,
+            "long_suppressed":  is_extreme_long,
+            "short_suppressed": is_extreme_short,
+            "note": (
+                "COT extreme long — long score halved (contrarian), shorts unaffected"
+                if is_extreme_long else
+                "COT extreme short — short score halved (contrarian), longs unaffected"
+                if is_extreme_short else
+                "COT positioning normal — no suppression applied"
+            ),
+        }
 
         # ── IMPROVEMENT 5 — volatility-adjusted thresholds ──────────────────
         if vix_price and vix_price > 30:
@@ -606,6 +630,7 @@ class ShortScoreEngine:
             "conditions":           conditions,
             "pre_conditions":       pre_conditions,
             "pre_conditions_pass":  pre_conditions_pass,
+            "cot_directional_filter": cot_directional_filter,
             "spread_info": {
                 "current_spread": of_spread,
                 "threshold":      spread_threshold,

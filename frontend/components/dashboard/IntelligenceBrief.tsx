@@ -61,7 +61,7 @@ export function IntelligenceBrief() {
     : ''
 
   return (
-    <div className="aurum-card" style={{ padding: '24px', height: '100%' }}>
+    <div className="aurum-card" style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -129,7 +129,7 @@ export function IntelligenceBrief() {
       )}
 
       {brief && !loading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', minHeight: 0, flex: 1 }}>
 
           {/* Headline */}
           <div style={{
@@ -169,7 +169,7 @@ export function IntelligenceBrief() {
 
           {/* Situation */}
           <div>
-            <div style={{ fontSize: '0.5rem', color: '#4a5068', letterSpacing: '0.18em', marginBottom: '8px' }}>
+            <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.18em', marginBottom: '8px' }}>
               SITUATION
             </div>
             <p style={{
@@ -188,14 +188,14 @@ export function IntelligenceBrief() {
 
             {/* Supporting gold */}
             <div style={{ padding: '14px', background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.12)' }}>
-              <div style={{ fontSize: '0.5rem', color: '#22c55e', letterSpacing: '0.15em', marginBottom: '10px', fontWeight: 700 }}>
+              <div style={{ fontSize: '10px', color: '#22c55e', letterSpacing: '0.15em', marginBottom: '10px', fontWeight: 700 }}>
                 ▲ SUPPORTING GOLD
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {brief.supporting_gold?.map((factor, i) => (
                   <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                     <span style={{ color: '#22c55e', flexShrink: 0, fontSize: '0.55rem', marginTop: '1px' }}>●</span>
-                    <span style={{ fontSize: '13px', color: '#a0b0a8', lineHeight: 1.6, letterSpacing: '0.02em' }}>
+                    <span style={{ fontSize: '12px', color: '#a0b0a8', lineHeight: 1.6, letterSpacing: '0.02em' }}>
                       {factor}
                     </span>
                   </div>
@@ -205,14 +205,14 @@ export function IntelligenceBrief() {
 
             {/* Pressuring gold */}
             <div style={{ padding: '14px', background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}>
-              <div style={{ fontSize: '0.5rem', color: '#ef4444', letterSpacing: '0.15em', marginBottom: '10px', fontWeight: 700 }}>
+              <div style={{ fontSize: '10px', color: '#ef4444', letterSpacing: '0.15em', marginBottom: '10px', fontWeight: 700 }}>
                 ▼ PRESSURING GOLD
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {brief.pressuring_gold?.map((factor, i) => (
                   <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                     <span style={{ color: '#ef4444', flexShrink: 0, fontSize: '0.55rem', marginTop: '1px' }}>●</span>
-                    <span style={{ fontSize: '13px', color: '#b0a0a0', lineHeight: 1.6, letterSpacing: '0.02em' }}>
+                    <span style={{ fontSize: '12px', color: '#b0a0a0', lineHeight: 1.6, letterSpacing: '0.02em' }}>
                       {factor}
                     </span>
                   </div>
@@ -227,11 +227,11 @@ export function IntelligenceBrief() {
             background: 'rgba(255,179,71,0.04)',
             border:     '1px solid rgba(255,179,71,0.2)',
           }}>
-            <div style={{ fontSize: '0.5rem', color: '#ffb347', letterSpacing: '0.18em', marginBottom: '8px', fontWeight: 700 }}>
+            <div style={{ fontSize: '10px', color: '#ffb347', letterSpacing: '0.18em', marginBottom: '8px', fontWeight: 700 }}>
               ⚡ KEY TENSION
             </div>
             <p style={{
-              fontSize:      '14px',
+              fontSize:      '13px',
               color:         '#c8b88a',
               lineHeight:    1.8,
               letterSpacing: '0.02em',
@@ -247,11 +247,11 @@ export function IntelligenceBrief() {
             background: 'rgba(255,80,0,0.05)',
             border:     '1px solid rgba(255,80,0,0.2)',
           }}>
-            <div style={{ fontSize: '0.5rem', color: '#ff6633', letterSpacing: '0.18em', marginBottom: '8px', fontWeight: 700 }}>
+            <div style={{ fontSize: '10px', color: '#ff6633', letterSpacing: '0.18em', marginBottom: '8px', fontWeight: 700 }}>
               ◆ BOTTOM LINE
             </div>
             <p style={{
-              fontSize:      '15px',
+              fontSize:      '14px',
               fontWeight:    600,
               color:         '#e0c8b8',
               lineHeight:    1.7,
@@ -265,18 +265,18 @@ export function IntelligenceBrief() {
           {/* Watch for + Confidence note */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px' }}>
             <div style={{ padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,80,0,0.08)' }}>
-              <div style={{ fontSize: '0.48rem', color: '#4a5068', letterSpacing: '0.15em', marginBottom: '6px' }}>
+              <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.15em', marginBottom: '6px' }}>
                 👁 WATCH FOR
               </div>
-              <p style={{ fontSize: '13px', color: '#8892a4', lineHeight: 1.6, margin: 0, letterSpacing: '0.02em' }}>
+              <p style={{ fontSize: '12px', color: '#8892a4', lineHeight: 1.6, margin: 0, letterSpacing: '0.02em' }}>
                 {brief.watch_for}
               </p>
             </div>
             <div style={{ padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,80,0,0.08)' }}>
-              <div style={{ fontSize: '0.48rem', color: '#4a5068', letterSpacing: '0.15em', marginBottom: '6px' }}>
+              <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.15em', marginBottom: '6px' }}>
                 📊 CONFIDENCE NOTE
               </div>
-              <p style={{ fontSize: '13px', color: '#8892a4', lineHeight: 1.6, margin: 0, letterSpacing: '0.02em' }}>
+              <p style={{ fontSize: '12px', color: '#8892a4', lineHeight: 1.6, margin: 0, letterSpacing: '0.02em' }}>
                 {brief.confidence_note}
               </p>
             </div>

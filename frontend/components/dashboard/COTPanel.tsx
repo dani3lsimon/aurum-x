@@ -98,7 +98,7 @@ export default function COTPanel() {
             </div>
           </div>
           <div style={{
-            fontSize: countdown.isLive ? '0.85rem' : '1.05rem',
+            fontSize: countdown.isLive ? '22px' : '28px',
             fontWeight: 800,
             color: countdownColor,
             textShadow: shouldFlash ? `0 0 12px ${countdownColor}` : 'none',
@@ -179,20 +179,20 @@ export default function COTPanel() {
               <div style={{ fontSize: '0.62rem', color: '#4a5068', letterSpacing: '0.1em', marginBottom: '6px' }}>
                 8-WEEK MANAGED-MONEY NET POSITION
               </div>
-              <div className="flex items-end gap-1" style={{ height: '36px' }}>
+              <div className="flex items-end gap-1" style={{ height: '56px' }}>
                 {(() => {
                   const vals = weeks.map(w => w.mm_net)
                   const min = Math.min(...vals), max = Math.max(...vals)
                   const range = max - min || 1
                   return vals.map((v, i) => {
-                    const h = Math.max(4, ((v - min) / range) * 36)
+                    const h = Math.max(8, ((v - min) / range) * 56)
                     const isLatest = i === vals.length - 1
                     return (
                       <div key={i} style={{
                         flex: 1, height: `${h}px`,
-                        background: isLatest ? '#ff4400' : (v >= 0 ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'),
+                        background: isLatest ? '#ff4400' : (v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),
                         borderRadius: '1px',
-                        boxShadow: isLatest ? '0 0 6px rgba(255,80,0,0.6)' : 'none',
+                        boxShadow: isLatest ? '0 0 12px rgba(255,80,0,0.8)' : 'none',
                         transition: 'height 0.5s ease',
                       }} />
                     )

@@ -11,6 +11,7 @@ interface Props {
   orderFlow?:   OrderFlowData | null
   chartTf:      '15m' | '1h' | '4h' | '1d'
   onTfChange:   (tf: '15m' | '1h' | '4h' | '1d') => void
+  lastTickPrice?: number
 }
 
 const TF_TABS: { key: '15m' | '1h' | '4h' | '1d'; label: string }[] = [
@@ -27,7 +28,7 @@ function fmtPrice2(p: number): string {
   return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, orderFlow, chartTf, onTfChange }: Props) {
+export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, orderFlow, chartTf, onTfChange, lastTickPrice }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const [dims, setDims] = useState({ w: 0, h: 0 })
@@ -48,31 +49,52 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
     return () => clearInterval(interval)
   }, [])
 
-  // ── Live last-candle update — keeps the current bar's close/high/low ticking ─
+  // ── Tick-level last-candle update — fires on EVERY cTrader tick ─────────────
+  useEffect(() => {
+    if (!setOhlcvData || !lastTickPrice || !ohlcvData.length) return
+    setOhlcvData(prev => {
+      if (!prev.length) return prev
+      const updated = [...prev]
+      const last = { ...updated[updated.length - 1] }
+      last.close = lastTickPrice
+      if (lastTickPrice > last.high) last.high = lastTickPrice
+      if (lastTickPrice < last.low)  last.low  = lastTickPrice
+      updated[updated.length - 1] = last
+      return updated
+    })
+  }, [lastTickPrice])
+
+  // ── New-candle detection — checks every 10s if a new bar has started ────────
+  const lastCandleTimeRef = useRef<string>('')
+  useEffect(() => {
+    if (!ohlcvData.length) return
+    lastCandleTimeRef.current = ohlcvData[ohlcvData.length - 1].time
+  }, [ohlcvData])
+
   useEffect(() => {
     if (!setOhlcvData) return
-    const pollLastCandle = async () => {
+    const checkNewCandle = async () => {
+      if (!lastCandleTimeRef.current) return
       try {
-        const r = await fetch(`${BACKEND}/market/orderflow`)
-        const d = await r.json()
-        const price = d.current_price
-        if (price) {
+        const tf = { '15m': 'M15', '1h': 'H1', '4h': 'H4', '1d': 'D' }[chartTf] || 'H1'
+        const r  = await fetch(`${BACKEND}/market/candles?granularity=${tf}&count=2`)
+        const candles: OHLCVBar[] = await r.json()
+        if (!candles.length) return
+
+        const newest = candles[candles.length - 1]
+        if (newest.time !== lastCandleTimeRef.current) {
           setOhlcvData(prev => {
-            if (!prev.length) return prev
-            const updated = [...prev]
-            const last = { ...updated[updated.length - 1] }
-            last.close = price
-            if (price > last.high) last.high = price
-            if (price < last.low)  last.low  = price
-            updated[updated.length - 1] = last
+            const updated = [...prev, newest]
+            if (updated.length > 200) updated.shift()
             return updated
           })
+          lastCandleTimeRef.current = newest.time
         }
       } catch {}
     }
-    const interval = setInterval(pollLastCandle, 5000)
+    const interval = setInterval(checkNewCandle, 10000)
     return () => clearInterval(interval)
-  }, [setOhlcvData])
+  }, [chartTf, setOhlcvData])
 
   // ── Hover tooltip — OHLCV for the candle under the cursor ───────────────────
   const [tooltip, setTooltip] = useState<{ visible: boolean; x: number; y: number; data: OHLCVBar | null }>({
@@ -470,18 +492,17 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
         )}
       </div>
 
-      {/* OANDA live order-flow strip */}
+      {/* Live order-flow + cTrader tick status strip */}
       {orderFlow && (
-        <div style={{
-          fontSize: '0.72rem', color: 'var(--text-label)', letterSpacing: '0.04em',
-          fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          borderTop: '1px solid rgba(240,13,23,0.1)', paddingTop: '8px',
-        }}>
-          VWAP {orderFlow.session_vwap != null ? fmtPrice(orderFlow.session_vwap) : '—'}
-          {' · '}DELTA {orderFlow.cumulative_delta ?? '—'} ({orderFlow.delta_direction ?? '—'})
-          {' · '}POC {orderFlow.poc_price != null ? fmtPrice(orderFlow.poc_price) : '—'}
-          {' · '}VAH {orderFlow.vah != null ? fmtPrice(orderFlow.vah) : '—'}
-          {' · '}VAL {orderFlow.val != null ? fmtPrice(orderFlow.val) : '—'}
+        <div style={{ display: 'flex', gap: '20px', fontSize: '11px', color: '#4a5068', letterSpacing: '0.12em', fontFamily: "'JetBrains Mono', monospace", borderTop: '1px solid rgba(255,80,0,0.06)', paddingTop: '6px', marginTop: '8px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <span>VWAP <span style={{ color: '#ff7744' }}>{orderFlow.session_vwap != null ? fmtPrice2(orderFlow.session_vwap) : '—'}</span></span>
+          <span>DELTA <span style={{ color: (orderFlow.cumulative_delta || 0) > 0 ? '#22c55e' : '#ef4444' }}>
+            {(orderFlow.cumulative_delta || 0) > 0 ? '+' : ''}{orderFlow.cumulative_delta?.toFixed?.(0) ?? orderFlow.cumulative_delta ?? '—'}
+          </span></span>
+          <span>POC <span style={{ color: '#ff6633' }}>{orderFlow.poc_price != null ? fmtPrice2(orderFlow.poc_price) : '—'}</span></span>
+          <span>VAH <span style={{ color: '#22c55e' }}>{orderFlow.vah != null ? fmtPrice2(orderFlow.vah) : '—'}</span></span>
+          <span>VAL <span style={{ color: '#ef4444' }}>{orderFlow.val != null ? fmtPrice2(orderFlow.val) : '—'}</span></span>
+          <span style={{ marginLeft: 'auto', color: '#22c55e' }}>● CTRADER LIVE TICKS</span>
         </div>
       )}
 

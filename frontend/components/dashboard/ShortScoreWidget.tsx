@@ -207,6 +207,85 @@ export default function ShortScoreWidget({ shortScore, compact = false }: Props)
         </div>
       )}
 
+      {/* COT directional filter note — informational, not a blocker */}
+      {shortScore?.cot_directional_filter?.long_suppressed && (
+        <div style={{
+          padding: '8px 12px',
+          background: 'rgba(255,179,71,0.06)',
+          border: '1px solid rgba(255,179,71,0.2)',
+          fontSize: '12px',
+          color: '#ffb347',
+          letterSpacing: '0.08em',
+          marginTop: '6px',
+        }}>
+          ⚡ COT EXTREME LONG — LONG SCORE HALVED · CONTRARIAN SHORT BIAS ACTIVE
+        </div>
+      )}
+      {shortScore?.cot_directional_filter?.short_suppressed && (
+        <div style={{
+          padding: '8px 12px',
+          background: 'rgba(255,179,71,0.06)',
+          border: '1px solid rgba(255,179,71,0.2)',
+          fontSize: '12px',
+          color: '#ffb347',
+          letterSpacing: '0.08em',
+          marginTop: '6px',
+        }}>
+          ⚡ COT EXTREME SHORT — SHORT SCORE HALVED · CONTRARIAN LONG BIAS ACTIVE
+        </div>
+      )}
+
+      {/* Compact BLOCKED state — show reason + live conditions to fill empty space */}
+      {compact && !shortScore?.pre_conditions_pass && (
+        <div style={{ marginTop: '8px' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ fontSize: '11px', color: '#4a5068', letterSpacing: '0.14em', marginBottom: '6px' }}>
+              BLOCKING REASON
+            </div>
+            {Object.entries(preConds).map(([key, pc]: [string, any]) => (
+              !pc?.pass && (
+                <div key={key} style={{
+                  padding: '6px 10px',
+                  background: 'rgba(239,68,68,0.06)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  color: '#ef4444',
+                  letterSpacing: '0.08em',
+                }}>
+                  ✗ {key.replace(/_/g, ' ').toUpperCase()} — FAILED
+                  {key === 'spread_acceptable' && spreadInfo && (
+                    <span style={{ color: '#4a5068', marginLeft: '8px' }}>
+                      (spread ${spreadInfo.current_spread} vs threshold ${spreadInfo.threshold})
+                    </span>
+                  )}
+                </div>
+              )
+            ))}
+          </div>
+
+          <div style={{ fontSize: '11px', color: '#4a5068', letterSpacing: '0.14em', marginBottom: '6px' }}>
+            LIVE CONDITIONS (INFORMATIONAL)
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+            {Object.entries(conditions).slice(0, 6).map(([key, cond]: [string, any]) => (
+              <div key={key} style={{
+                padding: '6px 8px',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,80,0,0.06)',
+              }}>
+                <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.1em', marginBottom: '2px' }}>
+                  {key.replace(/_/g, ' ').toUpperCase()}
+                </div>
+                <div style={{ fontSize: '11px', color: '#8892a4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {cond?.value ?? '—'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Pre-conditions row */}
       {!compact && (
       <div className="flex flex-col gap-1">

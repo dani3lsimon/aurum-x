@@ -181,6 +181,13 @@ export interface ShortScore {
   conditions: Record<string, ShortScoreCondition>
   pre_conditions: Record<string, ShortScorePreCondition>
   pre_conditions_pass: boolean
+  cot_directional_filter?: {
+    is_extreme_long: boolean
+    is_extreme_short: boolean
+    long_suppressed: boolean
+    short_suppressed: boolean
+    note: string
+  }
   spread_info: SpreadInfo
   data_sources_live: string[]
   data_sources_missing: string[]
