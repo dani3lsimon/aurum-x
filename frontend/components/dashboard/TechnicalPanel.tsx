@@ -93,7 +93,7 @@ export default function TechnicalPanel() {
 
   if (loading && !smc) {
     return (
-      <div className="aurum-card" style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: '#4a5068', letterSpacing: '0.14em' }}>
+      <div className="aurum-card" style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: '#4a5068', letterSpacing: '0.14em', minHeight: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         LOADING SMC STRUCTURE...
       </div>
     )
@@ -135,13 +135,13 @@ export default function TechnicalPanel() {
           const bos   = t.structure?.bos
           const choch = t.structure?.choch
           return (
-            <div key={tf} style={{ padding: '10px', border: '1px solid rgba(255,80,0,0.08)', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div key={tf} style={{ padding: '10px', border: '1px solid rgba(255,80,0,0.08)', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '6px', minHeight: '168px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#ff7744', letterSpacing: '0.08em' }}>{TF_LABEL[tf]}</span>
                 <span style={{ fontSize: '10px', fontWeight: 700, color: DIR_COLOR[t.bias] || '#6b7494', textTransform: 'uppercase' }}>{t.bias}</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', minHeight: '20px' }}>
                 <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '2px', letterSpacing: '0.08em',
                   color: DIR_COLOR[trend] || '#6b7494', background: `${DIR_COLOR[trend] || '#6b7494'}14`,
                   border: `1px solid ${DIR_COLOR[trend] || '#6b7494'}40`, textTransform: 'uppercase' }}>
@@ -163,7 +163,7 @@ export default function TechnicalPanel() {
 
               <ConfluenceGauge score={t.confluence_score ?? 0} />
 
-              <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', minHeight: '46px', alignContent: 'flex-start', overflow: 'hidden', maxHeight: '70px' }}>
                 {(t.patterns || []).length > 0
                   ? t.patterns.slice(0, 6).map((p: any, i: number) => patternTag(p, i))
                   : <span style={{ fontSize: '10px', color: '#4a5068' }}>No active patterns</span>}
@@ -174,6 +174,7 @@ export default function TechnicalPanel() {
       </div>
 
       {/* Fusion agent thesis card */}
+      <div style={{ minHeight: '180px' }}>
       {fusion && !fusion.error && (
         <div style={{ padding: '12px', border: '1px solid rgba(255,80,0,0.14)', borderRadius: '2px', background: 'rgba(255,80,0,0.02)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -243,6 +244,7 @@ export default function TechnicalPanel() {
           FUSION THESIS UNAVAILABLE — {fusion.error}
         </div>
       )}
+      </div>
     </div>
   )
 }
