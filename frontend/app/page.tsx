@@ -11,11 +11,13 @@ import AlertsFeed        from '@/components/dashboard/AlertsFeed'
 import ForecastChart     from '@/components/dashboard/ForecastChart'
 import COTPanel          from '@/components/dashboard/COTPanel'
 import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
+import MultiTfPanel      from '@/components/dashboard/MultiTfPanel'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 
 export default function Page() {
   const {
     forecast, agentScores, scenarios, alerts, shortScore, loading,
+    ohlcvData, multiTf, orderFlow, chartTf, setChartTf,
     isConnected, isRefreshing, triggerManualCycle,
   } = useForecast()
 
@@ -150,9 +152,15 @@ export default function Page() {
           <ShortScoreWidget shortScore={shortScore} />
         </div>
 
-        {/* Row 3 — Forecast Chart + (Regime stacked above Ranges) */}
-        <div className="aurum-card" style={{ gridColumn: 'span 8', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
-          <ForecastChart forecast={forecast} />
+        {/* Row 3 — Forecast Chart (real OANDA price action + bands) + (Regime stacked above Ranges) */}
+        <div style={{ gridColumn: 'span 8', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
+          <ForecastChart
+            forecast={forecast}
+            ohlcvData={ohlcvData}
+            orderFlow={orderFlow}
+            chartTf={chartTf}
+            onTfChange={setChartTf}
+          />
         </div>
         <div style={{ gridColumn: 'span 4', display: 'grid', gridTemplateRows: 'auto auto', gap: '1px', minWidth: 0 }}>
           <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
@@ -161,6 +169,11 @@ export default function Page() {
           <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
             <ForecastRanges forecast={forecast} />
           </div>
+        </div>
+
+        {/* Row 3b — Multi-Timeframe Confluence Panel (full width) */}
+        <div style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
+          <MultiTfPanel multiTf={multiTf} />
         </div>
 
         {/* Row 4 — Agent Score Matrix (full width, all 11 agents) */}

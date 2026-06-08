@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, ShortScore, WSMessage } from '@/lib/types'
+import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, ShortScore, WSMessage, OHLCVBar, MultiTfSignal, OrderFlowData } from '@/lib/types'
 import { useWebSocket } from './useWebSocket'
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -13,9 +13,59 @@ export function useForecast() {
   const [alerts,       setAlerts]       = useState<Alert[]>([])
   const [releases,     setReleases]     = useState<EconomicRelease[]>([])
   const [shortScore,   setShortScore]   = useState<ShortScore | null>(null)
+  const [ohlcvData,    setOhlcvData]    = useState<OHLCVBar[]>([])
+  const [multiTf,      setMultiTf]      = useState<MultiTfSignal | null>(null)
+  const [orderFlow,    setOrderFlow]    = useState<OrderFlowData | null>(null)
+  const [chartTf,      setChartTf]      = useState<'15m' | '1h' | '4h' | '1d'>('1h')
   const [loading,      setLoading]      = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { isConnected, lastMessage }    = useWebSocket(WS_URL)
+
+  // Fetch OHLCV candles on mount and whenever the chart timeframe changes
+  useEffect(() => {
+    const tfMap:    Record<string, string> = { '15m': 'M15', '1h': 'H1', '4h': 'H4', '1d': 'D' }
+    const countMap: Record<string, number> = { '15m': 96,   '1h': 48,   '4h': 24,   '1d': 14  }
+    fetch(`${BACKEND}/market/candles?granularity=${tfMap[chartTf]}&count=${countMap[chartTf]}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setOhlcvData(d) })
+      .catch(() => {})
+  }, [chartTf])
+
+  // Fetch live OANDA order-flow (VWAP/delta/POC/VAH/VAL) on mount + every 60s
+  useEffect(() => {
+    const fetchOrderFlow = () => {
+      fetch(`${BACKEND}/market/orderflow`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d && Object.keys(d).length > 0) setOrderFlow(d) })
+        .catch(() => {})
+    }
+    fetchOrderFlow()
+    const interval = setInterval(fetchOrderFlow, 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Fetch the multi-timeframe signal on mount
+  useEffect(() => {
+    fetch(`${BACKEND}/forecast/multi-tf`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && Object.keys(d).length > 0) setMultiTf(d) })
+      .catch(() => {})
+  }, [])
+
+  // Auto-refresh the multi-TF signal every 5 minutes (matches scheduler cadence)
+  useEffect(() => {
+    const fetchMultiTf = async () => {
+      try {
+        const r = await fetch(`${BACKEND}/forecast/multi-tf`)
+        if (r.ok) {
+          const d = await r.json()
+          if (d && Object.keys(d).length > 0) setMultiTf(d)
+        }
+      } catch { /* keep previous value */ }
+    }
+    const interval = setInterval(fetchMultiTf, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Initial fetch
   useEffect(() => {
@@ -85,6 +135,12 @@ export function useForecast() {
       case 'short_score_update':
         if (msg.data && typeof msg.data === 'object') {
           setShortScore(msg.data as ShortScore)
+        }
+        break
+
+      case 'multi_tf_update':
+        if (msg.data && typeof msg.data === 'object') {
+          setMultiTf(msg.data as MultiTfSignal)
         }
         break
     }
@@ -157,6 +213,7 @@ export function useForecast() {
 
   return {
     forecast, agentScores, scenarios, alerts, releases, shortScore,
+    ohlcvData, multiTf, orderFlow, chartTf, setChartTf,
     loading, isConnected, isRefreshing, triggerManualCycle,
   }
 }

@@ -200,6 +200,79 @@ export interface ShortScore {
 }
 
 export interface WSMessage {
-  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change' | 'initial_state' | 'release_alert' | 'short_score_update'
+  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change' | 'initial_state' | 'release_alert' | 'short_score_update' | 'multi_tf_update'
   data: unknown
+}
+
+// ── Multi-timeframe engine + price-action chart ────────────────────────────
+
+export interface OHLCVBar {
+  time:     string
+  open:     number
+  high:     number
+  low:      number
+  close:    number
+  volume:   number
+  complete: boolean
+}
+
+export interface OrderFlowData {
+  status?: string
+  source?: string
+  instrument?: string
+  current_price?: number
+  bid?: number
+  ask?: number
+  spread?: number
+  spread_ok?: boolean
+  session_vwap?: number
+  vwap_15min?: number
+  price_vs_vwap?: number
+  vwap_signal?: string
+  cumulative_delta?: number
+  delta_direction?: string
+  delta_momentum?: string
+  poc_price?: number
+  vah?: number
+  val?: number
+  prior_session_low?: number
+  prior_session_high?: number
+  [key: string]: unknown
+}
+
+export interface TfCondition {
+  short_met: boolean
+  long_met:  boolean
+  value:     string
+}
+
+export interface TfScore {
+  short_pct:        number
+  long_pct:         number
+  short_raw:        number
+  long_raw:         number
+  atr:              number
+  vwap:             number
+  delta:            number
+  current_price?:   number
+  break_direction?: string
+  granularity?:     string
+  error?:           string
+  conditions:       Record<string, TfCondition>
+}
+
+export interface MultiTfSignal {
+  timestamp:        string
+  best_signal:      string
+  best_timeframe:   string | null
+  best_direction:   string
+  conviction:       string | null
+  edge_strength:    number
+  risk_pct:         number
+  stop_loss:        number | null
+  vix:              number
+  hc_threshold?:    number
+  scalp_threshold?: number
+  timeframes:       Record<string, TfScore>
+  shared_inputs?:   Record<string, unknown>
 }
