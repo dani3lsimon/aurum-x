@@ -32,6 +32,7 @@ html, body {
   overflow-x:     hidden;
   min-height:     100vh;
   letter-spacing: 0.02em;
+  font-size:      13px; /* 27-inch base scale — body text minimum 13px everywhere */
 }
 
 /* ── Scanline overlay ──────────────────────────────────────────────── */
@@ -76,6 +77,7 @@ body::after {
   position:      relative;
   z-index:       1;
   animation:     cardMount 0.4s ease-out forwards;
+  padding:       18px; /* 27-inch base scale */
 }
 
 .hero-number {
@@ -85,11 +87,12 @@ body::after {
   text-shadow:    var(--glow-text);
   letter-spacing: -0.02em;
   animation:      countUp 0.8s ease-out forwards;
+  font-size:      clamp(3rem, 5vw, 5.5rem); /* 27-inch base scale */
 }
 
 .section-label {
-  font-size:      0.72rem;
-  letter-spacing: 0.15em;
+  font-size:      0.75rem; /* 27-inch base scale */
+  letter-spacing: 0.2em;   /* 27-inch base scale */
   color:          var(--text-label);
   font-weight:    500;
   display:        flex;
@@ -103,7 +106,7 @@ body::after {
 }
 
 .live-badge {
-  font-size:      0.7rem;
+  font-size:      0.7rem; /* 27-inch base scale */
   letter-spacing: 0.15em;
   color:          #ff4400;
   display:        flex;
@@ -117,8 +120,8 @@ body::after {
   background:     rgba(255,80,0,0.12);
   border:         1px solid rgba(255,80,0,0.4);
   border-radius:  2px;
-  padding:        3px 8px;
-  font-size:      0.7rem;
+  padding:        3px 10px;   /* 27-inch base scale */
+  font-size:      0.72rem;    /* 27-inch base scale */
   letter-spacing: 0.1em;
   color:          #ff6633;
   font-weight:    600;
@@ -137,8 +140,8 @@ body::after {
 .status-pill {
   border:         1px solid;
   border-radius:  2px;
-  padding:        4px 10px;
-  font-size:      0.7rem;
+  padding:        4px 12px;   /* 27-inch base scale */
+  font-size:      0.68rem;    /* 27-inch base scale */
   letter-spacing: 0.12em;
   font-weight:    600;
   display:        flex;

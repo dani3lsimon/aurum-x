@@ -6,13 +6,14 @@ import AgentScorePanel   from '@/components/dashboard/AgentScorePanel'
 import RegimeClassifier  from '@/components/dashboard/RegimeClassifier'
 import ForecastRanges    from '@/components/dashboard/ForecastRanges'
 import ScenarioTree      from '@/components/dashboard/ScenarioTree'
-import TailRiskPanel     from '@/components/dashboard/TailRiskPanel'
 import AlertsFeed        from '@/components/dashboard/AlertsFeed'
 import ForecastChart     from '@/components/dashboard/ForecastChart'
 import COTPanel          from '@/components/dashboard/COTPanel'
 import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
 import MultiTfPanel      from '@/components/dashboard/MultiTfPanel'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
+
+type TabId = 'live' | 'agents' | 'analysis'
 
 export default function Page() {
   const {
@@ -23,6 +24,19 @@ export default function Page() {
 
   const [toast, setToast]               = useState<string | null>(null)
   const prevRefreshing                  = useRef(false)
+
+  const [activeTab, setActiveTab] = useState<TabId>('live')
+  // Restore persisted tab from localStorage after mount (avoids SSR/CSR mismatch)
+  useEffect(() => {
+    const saved = window.localStorage.getItem('aurum_tab') as TabId | null
+    if (saved === 'live' || saved === 'agents' || saved === 'analysis') {
+      setActiveTab(saved)
+    }
+  }, [])
+  const handleTab = (t: TabId) => {
+    setActiveTab(t)
+    window.localStorage.setItem('aurum_tab', t)
+  }
 
   // Show toast when refresh completes (isRefreshing flips true → false)
   useEffect(() => {
@@ -38,6 +52,7 @@ export default function Page() {
   const regime = forecast?.macro_regime ?? 'INITIALISING'
   const bull   = forecast?.bullish_prob ?? 0
   const bear   = forecast?.bearish_prob ?? 0
+  const conf   = forecast?.confidence_score ?? 0
 
   if (loading) {
     return (
@@ -52,6 +67,12 @@ export default function Page() {
       </div>
     )
   }
+
+  const TABS: { id: TabId; label: string }[] = [
+    { id: 'live',     label: '① LIVE DASHBOARD' },
+    { id: 'agents',   label: '② AGENT MATRIX' },
+    { id: 'analysis', label: '③ ANALYSIS' },
+  ]
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#06070b', position: 'relative', zIndex: 1 }}>
@@ -72,10 +93,18 @@ export default function Page() {
         {/* Centre: gold price hero */}
         <div className="flex flex-col items-center">
           <div className="text-[var(--text-label)] mb-0.5" style={{ fontSize: '0.75rem' }}>XAUUSD SPOT</div>
-          <div className="hero-number text-2xl sm:text-3xl">
+          <div className="hero-number" style={{ fontSize: '44px', fontWeight: 800 }}>
             {price > 0
               ? `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               : '---'}
+          </div>
+          {/* Quick-stats strip — always visible regardless of active tab */}
+          <div style={{ fontSize: '13px', color: '#6b7494', display: 'flex', gap: '16px', alignItems: 'center', marginTop: '4px' }}>
+            <span>BULL <strong style={{ color: '#22c55e' }}>{bull.toFixed(0)}%</strong></span>
+            <span>BEAR <strong style={{ color: '#ef4444' }}>{bear.toFixed(0)}%</strong></span>
+            <span>CONF <strong style={{ color: '#ffb347' }}>{conf.toFixed(0)}%</strong></span>
+            <span style={{ color: '#2a2d3a' }}>|</span>
+            <span style={{ color: '#ff7744', fontWeight: 700 }}>{shortScore?.net_signal ?? '—'}</span>
           </div>
         </div>
 
@@ -134,74 +163,123 @@ export default function Page() {
         </div>
       </header>
 
-      {/* ── Dashboard Grid — 7-row layout (v3.0 spec) ───────────────────── */}
-      <main style={{
-        flex: 1, display: 'grid', gap: '1px',
-        background: 'rgba(255,80,0,0.06)',
-        gridTemplateColumns: 'repeat(12, 1fr)',
-        alignItems: 'stretch',
-        margin: '8px 12px 12px',
-        border: '1px solid var(--border-subtle)',
+      {/* ── Tab Navigation ───────────────────────────────────────────────── */}
+      <nav style={{
+        display: 'flex',
+        borderBottom: '1px solid rgba(255,80,0,0.12)',
+        background: '#06070b',
+        padding: '0 20px',
       }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => handleTab(tab.id)}
+            style={{
+              padding: '14px 24px',
+              fontSize: '13px',
+              letterSpacing: '0.16em',
+              color: activeTab === tab.id ? '#ff5500' : '#4a5068',
+              borderBottom: activeTab === tab.id ? '2px solid #ff5500' : '2px solid transparent',
+              background: 'transparent',
+              border: 'none',
+              borderBottomWidth: '2px',
+              borderBottomStyle: 'solid',
+              borderBottomColor: activeTab === tab.id ? '#ff5500' : 'transparent',
+              cursor: 'pointer',
+              fontFamily: "'JetBrains Mono', monospace",
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+              transition: 'color 0.15s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-        {/* Row 2 — Probability Gauge + Short-Setup Score */}
-        <div className="aurum-card" style={{ gridColumn: 'span 8', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
-          <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} />
-        </div>
-        <div className="aurum-card" style={{ gridColumn: 'span 4', minWidth: 0, overflow: 'hidden' }}>
-          <ShortScoreWidget shortScore={shortScore} />
-        </div>
+      {/* ── Tab 1: LIVE DASHBOARD ────────────────────────────────────────── */}
+      {activeTab === 'live' && (
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
 
-        {/* Row 3 — Forecast Chart (real OANDA price action + bands) + (Regime stacked above Ranges) */}
-        <div style={{ gridColumn: 'span 8', minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
-          <ForecastChart
-            forecast={forecast}
-            ohlcvData={ohlcvData}
-            orderFlow={orderFlow}
-            chartTf={chartTf}
-            onTfChange={setChartTf}
-          />
-        </div>
-        <div style={{ gridColumn: 'span 4', display: 'grid', gridTemplateRows: 'auto auto', gap: '1px', minWidth: 0 }}>
-          <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-            <RegimeClassifier forecast={forecast} />
+          {/* Row 1: 3 huge probability numbers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            <ProbabilityGauge forecast={forecast} isRefreshing={isRefreshing} variant="trio" />
           </div>
-          <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
-            <ForecastRanges forecast={forecast} />
+
+          {/* Row 2: Signal engine (left) + right column stack */}
+          <div style={{ display: 'grid', gridTemplateColumns: '5fr 4fr', gap: '8px', alignItems: 'start' }}>
+            <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+              <ShortScoreWidget shortScore={shortScore} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
+              <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+                <RegimeClassifier forecast={forecast} />
+              </div>
+
+              {/* OANDA live strip — 6 metrics */}
+              <div className="aurum-card p-4" style={{ minWidth: 0, overflow: 'hidden' }}>
+                <div className="section-label" style={{ marginBottom: '10px' }}>OANDA Live — XAU/USD</div>
+                <div className="grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', fontSize: '0.7rem', letterSpacing: '0.04em' }}>
+                  <div><span style={{ color: 'var(--text-muted)' }}>PRICE </span><strong>{orderFlow?.current_price ? `$${orderFlow.current_price.toFixed(2)}` : '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>VWAP </span><strong>{orderFlow?.session_vwap ? `$${orderFlow.session_vwap.toFixed(2)}` : '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>DELTA </span><strong>{orderFlow?.cumulative_delta ?? '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>POC </span><strong>{orderFlow?.poc_price ? `$${orderFlow.poc_price.toFixed(2)}` : '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>VAH </span><strong>{orderFlow?.vah ? `$${orderFlow.vah.toFixed(2)}` : '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>VAL </span><strong>{orderFlow?.val ? `$${orderFlow.val.toFixed(2)}` : '—'}</strong></div>
+                </div>
+              </div>
+
+              {/* Alert feed — last 3 alerts */}
+              <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+                <AlertsFeed alerts={alerts.slice(0, 3)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Forecast chart + Multi-TF — real OANDA price action */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+            <div style={{ minHeight: '380px', minWidth: 0, overflow: 'hidden' }}>
+              <ForecastChart
+                forecast={forecast}
+                ohlcvData={ohlcvData}
+                orderFlow={orderFlow}
+                chartTf={chartTf}
+                onTfChange={setChartTf}
+              />
+            </div>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <MultiTfPanel multiTf={multiTf} />
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Row 3b — Multi-Timeframe Confluence Panel (full width) */}
-        <div style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
-          <MultiTfPanel multiTf={multiTf} />
+      {/* ── Tab 2: AGENT MATRIX ──────────────────────────────────────────── */}
+      {activeTab === 'agents' && (
+        <div style={{ padding: '20px', flex: 1 }}>
+          <AgentScorePanel scores={agentScores} layout="full" />
         </div>
+      )}
 
-        {/* Row 4 — Agent Score Matrix (full width, all 11 agents) */}
-        <div className="aurum-card" style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
-          <AgentScorePanel scores={agentScores} />
+      {/* ── Tab 3: ANALYSIS ──────────────────────────────────────────────── */}
+      {activeTab === 'analysis' && (
+        <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '5fr 4fr', gap: '8px', flex: 1, alignItems: 'start' }}>
+          <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+            <IntelligenceBrief />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
+            <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+              <ScenarioTree scenarios={scenarios} />
+            </div>
+            <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+              <COTPanel />
+            </div>
+            <div className="aurum-card" style={{ minWidth: 0, overflow: 'hidden' }}>
+              <ForecastRanges forecast={forecast} />
+            </div>
+          </div>
         </div>
-
-        {/* Row 5 — Intelligence Brief (full width) */}
-        <div className="aurum-card" style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
-          <IntelligenceBrief />
-        </div>
-
-        {/* Row 6 — Scenarios + Tail Risk + Alerts */}
-        <div className="aurum-card" style={{ gridColumn: 'span 5', minWidth: 0, overflow: 'hidden' }}>
-          <ScenarioTree scenarios={scenarios} />
-        </div>
-        <div className="aurum-card" style={{ gridColumn: 'span 4', minWidth: 0, overflow: 'hidden' }}>
-          <TailRiskPanel forecast={forecast} />
-        </div>
-        <div className="aurum-card" style={{ gridColumn: 'span 3', minWidth: 0, overflow: 'hidden' }}>
-          <AlertsFeed alerts={alerts} />
-        </div>
-
-        {/* Row 7 — COT Panel (full width) */}
-        <div className="aurum-card" style={{ gridColumn: '1 / 13', minWidth: 0, overflow: 'hidden' }}>
-          <COTPanel />
-        </div>
-      </main>
+      )}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <footer className="px-4 py-1.5 flex items-center justify-between border-t border-[var(--border-subtle)] shrink-0" style={{ zIndex: 10 }}>

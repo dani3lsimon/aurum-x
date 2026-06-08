@@ -27,6 +27,14 @@ export interface AgentScore {
   rationale: string
   timestamp: string
   regime: string
+  raw_data?: {
+    key_factors?: string[]
+    directional_bias?: string
+    signal_strength?: string
+    data_quality?: string
+    notable_risk?: string
+    [key: string]: unknown
+  }
 }
 
 export interface Scenario {

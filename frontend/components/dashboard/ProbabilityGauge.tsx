@@ -1,9 +1,9 @@
 'use client'
 import { Forecast } from '@/lib/types'
 
-interface Props { forecast: Forecast | null; isRefreshing?: boolean }
+interface Props { forecast: Forecast | null; isRefreshing?: boolean; variant?: 'default' | 'trio' }
 
-export default function ProbabilityGauge({ forecast, isRefreshing }: Props) {
+export default function ProbabilityGauge({ forecast, isRefreshing, variant = 'default' }: Props) {
   const bull = forecast?.bullish_prob ?? 33
   const bear = forecast?.bearish_prob ?? 33
   const neut = forecast?.neutral_prob ?? 34
@@ -14,6 +14,37 @@ export default function ProbabilityGauge({ forecast, isRefreshing }: Props) {
     : bear > bull && bear > neut ? 'BEARISH' : 'NEUTRAL'
   const domColor = dominant === 'BULLISH' ? '#22c55e'
     : dominant === 'BEARISH' ? '#ef4444' : '#94a3b8'
+
+  // 27-inch trio layout — three huge standalone metric boxes (BULL / BEAR / CONFIDENCE)
+  if (variant === 'trio') {
+    const boxes = [
+      { label: 'BULLISH PROBABILITY',  val: bull, color: '#22c55e', suffix: '%' },
+      { label: 'BEARISH PROBABILITY',  val: bear, color: '#ef4444', suffix: '%' },
+      { label: 'CONFIDENCE',           val: conf, color: '#ffb347', suffix: '%' },
+    ]
+    return (
+      <>
+        {boxes.map(b => (
+          <div key={b.label} className="aurum-card p-4 flex flex-col items-center justify-center gap-2" style={{
+            border: isRefreshing ? '1px solid rgba(255,80,0,0.6)' : '1px solid var(--border-subtle)',
+            transition: 'border-color 0.3s ease',
+            animation: isRefreshing ? 'glowPulse 1s ease-in-out infinite' : 'cardMount 0.4s ease-out forwards',
+            minHeight: '220px',
+          }}>
+            <div style={{ fontSize: '14px', letterSpacing: '0.2em', color: 'var(--text-label)' }}>{b.label}</div>
+            <div className="hero-number" style={{ fontSize: 'clamp(5rem, 9vw, 8rem)', color: b.color, textShadow: `0 0 24px ${b.color}66` }}>
+              {b.val.toFixed(0)}<span style={{ fontSize: '0.4em' }}>{b.suffix}</span>
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text-label)', letterSpacing: '0.1em' }}>
+              {b.label === 'CONFIDENCE'
+                ? `${mom > 0 ? '+' : ''}${mom.toFixed(1)} MOMENTUM`
+                : `${dominant} REGIME`}
+            </div>
+          </div>
+        ))}
+      </>
+    )
+  }
 
   return (
     <div className="aurum-card p-4 flex flex-col gap-3" style={{
