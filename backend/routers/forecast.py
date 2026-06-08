@@ -195,6 +195,29 @@ async def get_calibration():
     return await compute_calibration()
 
 
+@router.get("/multi-tf")
+async def get_multi_tf_signal():
+    """
+    Multi-timeframe bi-directional confluence engine — runs the same
+    9-condition scoring at 15min/1h/4h on real OANDA candles, blends them
+    (50/30/20 weighting) and surfaces the single highest-conviction
+    timeframe + direction with edge strength, suggested risk %, and a
+    volatility-derived stop-loss level. Cached 60s; scheduler re-evaluates
+    every 5 minutes (see scheduler._run_multi_tf).
+    """
+    from engines.multi_tf_engine import evaluate_multi_tf
+    return await evaluate_multi_tf()
+
+
+@router.post("/multi-tf/refresh")
+async def refresh_multi_tf():
+    """Force a fresh multi-timeframe evaluation, bypassing the 60s cache."""
+    from services.redis_service import cache_delete
+    from engines.multi_tf_engine import evaluate_multi_tf
+    await cache_delete("multi_tf_signal")
+    return await evaluate_multi_tf()
+
+
 @router.get("/short-score/history")
 async def get_short_score_history(limit: int = 48):
     """Recent intraday_signals rows — score history for the ShortScoreWidget sparkline/log."""

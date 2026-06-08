@@ -83,6 +83,9 @@ class AurumScheduler:
         self.scheduler.add_job(self._run_calibration,
                                CronTrigger(hour=22, minute=0, timezone="UTC"),
                                id="daily_calibration", replace_existing=True)
+        # Multi-timeframe confluence engine (15min/1h/4h blended) — every 5 min
+        self.scheduler.add_job(self._run_multi_tf, IntervalTrigger(minutes=5),
+                               id="multi_tf", replace_existing=True)
 
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
@@ -310,6 +313,17 @@ class AurumScheduler:
             logger.info(f"Daily calibration complete: {result.get('status')}")
         except Exception as e:
             logger.error(f"Calibration job error: {e}")
+
+    async def _run_multi_tf(self):
+        """Multi-timeframe confluence engine — re-evaluates the bi-directional
+        9-condition gauge at 15min/1h/4h on real OANDA candles, persists an
+        audit row, and broadcasts {'type': 'multi_tf_update'}. Every 5 minutes."""
+        try:
+            from engines.multi_tf_engine import evaluate_multi_tf
+            result = await evaluate_multi_tf()
+            logger.info(f"Multi-TF: {result.get('best_signal')} | TF: {result.get('best_timeframe')}")
+        except Exception as e:
+            logger.error(f"Multi-TF scheduler error: {e}")
 
     async def _run_fmp_calendar_sync(self):
         try:
