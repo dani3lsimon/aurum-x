@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     ctrader_account_id: str = ""
 
     # cTrader VPS tick bridge — direct broker WebSocket/REST relay (no agent)
-    ctrader_bridge_url:   str = "http://70.156.8.139:8081"
-    ctrader_bridge_ws:    str = "ws://70.156.8.139:8080"
+    ctrader_bridge_url:   str = "https://70-156-8-139.sslip.io"
+    ctrader_bridge_ws:    str = "wss://70-156-8-139.sslip.io/ws"
     ctrader_bridge_token: str = ""
 
     # OANDA v20 REST API — primary XAU_USD/FX/order-flow source

@@ -21,7 +21,7 @@ settings = get_settings()
 class CTraderCollector:
 
     def __init__(self):
-        self.bridge_url   = getattr(settings, 'ctrader_bridge_url', 'http://70.156.8.139:8081')
+        self.bridge_url   = getattr(settings, 'ctrader_bridge_url', 'https://70-156-8-139.sslip.io')
         self.bridge_token = getattr(settings, 'ctrader_bridge_token', '')
         self.headers      = {'Authorization': f'Bearer {self.bridge_token}'}
 
