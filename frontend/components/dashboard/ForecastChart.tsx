@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Forecast, OHLCVBar, OrderFlowData } from '@/lib/types'
+import { Forecast, OHLCVBar, OrderFlowData, MultiTfSignal } from '@/lib/types'
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
@@ -12,6 +12,7 @@ interface Props {
   chartTf:      '15m' | '1h' | '4h' | '1d'
   onTfChange:   (tf: '15m' | '1h' | '4h' | '1d') => void
   lastTickPrice?: number
+  multiTf?: MultiTfSignal | null
 }
 
 const TF_TABS: { key: '15m' | '1h' | '4h' | '1d'; label: string }[] = [
@@ -28,7 +29,7 @@ function fmtPrice2(p: number): string {
   return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, orderFlow, chartTf, onTfChange, lastTickPrice }: Props) {
+export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, orderFlow, chartTf, onTfChange, lastTickPrice, multiTf }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const [dims, setDims] = useState({ w: 0, h: 0 })
@@ -122,7 +123,7 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
     const bars = (ohlcvData || []).filter(b => b && typeof b.close === 'number')
 
     // Layout constants — shared between draw pass and the mousemove hit-test
-    const pad = { top: 28, bottom: 28, left: 12, right: 14 }
+    const pad = { top: 28, bottom: 28, left: 58, right: 56 }
 
     const drawChart = () => {
       const dpr  = window.devicePixelRatio || 1
@@ -191,6 +192,47 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
         ctx.fillStyle = 'rgba(107,116,148,0.55)'
         ctx.font      = '9px JetBrains Mono, monospace'
         ctx.fillText(fmtPrice(gp), pad.left + 4, gy - 3)
+      }
+
+      // ── Y-AXIS PRICE SCALE (right side) ─────────────────────
+      {
+        const priceStep = scaleRange / 8   // 8 price levels
+        ctx.font = '10px JetBrains Mono, monospace'
+        ctx.textAlign = 'left'
+
+        for (let i = 0; i <= 8; i++) {
+          const p = scaleMin + priceStep * i
+          const y = toY(p)
+
+          // Tick mark
+          ctx.strokeStyle = 'rgba(255,80,0,0.15)'
+          ctx.lineWidth   = 0.5
+          ctx.beginPath()
+          ctx.moveTo(W - pad.right, y)
+          ctx.lineTo(W - pad.right + 4, y)
+          ctx.stroke()
+
+          // Price label
+          ctx.fillStyle = '#3a3d4a'
+          ctx.fillText(`$${Math.round(p).toLocaleString()}`, W - pad.right + 7, y + 3)
+
+          // Horizontal grid line (very subtle)
+          ctx.strokeStyle = 'rgba(255,80,0,0.04)'
+          ctx.setLineDash([2, 6])
+          ctx.beginPath()
+          ctx.moveTo(pad.left, y)
+          ctx.lineTo(W - pad.right, y)
+          ctx.stroke()
+          ctx.setLineDash([])
+        }
+
+        // Right axis border line
+        ctx.strokeStyle = 'rgba(255,80,0,0.1)'
+        ctx.lineWidth   = 0.5
+        ctx.beginPath()
+        ctx.moveTo(W - pad.right, pad.top)
+        ctx.lineTo(W - pad.right, H - pad.bottom)
+        ctx.stroke()
       }
 
       // ── Candlesticks (real OANDA OHLCV) ────────────────────────────────
@@ -384,6 +426,94 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
         ctx.globalAlpha = 1
         ctx.restore()
       }
+
+      // ── TP / SL LINES ────────────────────────────────────────
+      if (multiTf?.entry_price && multiTf?.stop_loss) {
+        const tp1 = multiTf.take_profits?.tp1?.price
+        const tp2 = multiTf.take_profits?.tp2?.price
+        const tp3 = multiTf.take_profits?.tp3?.price
+        const sl  = multiTf.stop_loss
+        const minP = scaleMin
+        const maxP = scaleMax
+
+        // Draw each level if it's in the visible price range
+        const levels = [
+          { price: sl,  color: '#ef4444', label: 'SL',  opacity: 0.8, dash: [4, 3] },
+          { price: tp1, color: '#22c55e', label: 'TP1', opacity: 0.8, dash: [6, 3] },
+          { price: tp2, color: '#22c55e', label: 'TP2', opacity: 0.5, dash: [4, 4] },
+          { price: tp3, color: '#22c55e', label: 'TP3', opacity: 0.3, dash: [2, 5] },
+        ]
+
+        levels.forEach(({ price, color, label, opacity, dash }) => {
+          if (!price || price < minP || price > maxP) return
+          const y = toY(price)
+
+          ctx.save()
+          ctx.globalAlpha  = opacity
+          ctx.strokeStyle  = color
+          ctx.lineWidth    = 1
+          ctx.setLineDash(dash)
+
+          // Line from left edge to right edge
+          ctx.beginPath()
+          ctx.moveTo(pad.left, y)
+          ctx.lineTo(W - pad.right, y)
+          ctx.stroke()
+          ctx.setLineDash([])
+
+          // Label box on left side
+          ctx.fillStyle = color
+          ctx.globalAlpha = opacity * 0.9
+          const lw = 32
+          ctx.fillRect(pad.left - lw - 2, y - 8, lw, 16)
+          ctx.fillStyle = '#000'
+          ctx.globalAlpha = 1
+          ctx.font = 'bold 9px JetBrains Mono, monospace'
+          ctx.textAlign = 'center'
+          ctx.fillText(label, pad.left - lw / 2 - 2, y + 3)
+
+          // Price on right side
+          ctx.fillStyle = color
+          ctx.globalAlpha = opacity
+          ctx.font = '9px JetBrains Mono, monospace'
+          ctx.textAlign = 'left'
+          ctx.fillText(`$${price.toLocaleString('en-US', { minimumFractionDigits: 0 })}`, W - pad.right + 7, y - 9)
+
+          ctx.restore()
+        })
+
+        // Shaded reward zone (TP1 to entry for long, entry to TP1 for short)
+        if (tp1 && tp1 > minP && tp1 < maxP) {
+          const entry  = multiTf.entry_price!
+          const yEntry = toY(entry)
+          const yTp1   = toY(tp1)
+          const yTop   = Math.min(yEntry, yTp1)
+          const yBot   = Math.max(yEntry, yTp1)
+
+          const rewardGrad = ctx.createLinearGradient(0, yTop, 0, yBot)
+          rewardGrad.addColorStop(0, 'rgba(34,197,94,0.10)')
+          rewardGrad.addColorStop(1, 'rgba(34,197,94,0.02)')
+          ctx.fillStyle = rewardGrad
+          ctx.fillRect(pad.left, yTop, candleW, yBot - yTop)
+        }
+
+        // Shaded risk zone (entry to SL)
+        if (sl > minP && sl < maxP) {
+          const entry  = multiTf.entry_price!
+          const ySL    = toY(sl)
+          const yEntry = toY(entry)
+          const yTop   = Math.min(ySL, yEntry)
+          const yBot   = Math.max(ySL, yEntry)
+
+          const riskGrad = ctx.createLinearGradient(0, yTop, 0, yBot)
+          riskGrad.addColorStop(0, 'rgba(239,68,68,0.08)')
+          riskGrad.addColorStop(1, 'rgba(239,68,68,0.02)')
+          ctx.fillStyle = riskGrad
+          ctx.fillRect(pad.left, yTop, candleW, yBot - yTop)
+        }
+
+        ctx.textAlign = 'left'
+      }
     }
 
     drawChart()
@@ -425,7 +555,7 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
       canvas.removeEventListener('mouseleave', handleMouseLeave)
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
-  }, [ohlcvData, orderFlow, forecast, dims, livePrice])
+  }, [ohlcvData, orderFlow, forecast, dims, livePrice, multiTf])
 
   const bull = forecast?.bullish_prob ?? 0
   const bear = forecast?.bearish_prob ?? 0

@@ -35,6 +35,22 @@ export function useForecast() {
   const tickBufferRef = useRef<{ price: number; time: number }[]>([])
   const [lastTickPrice, setLastTickPrice] = useState<number>(0)
 
+  // Signal direction transition tracking
+  const prevSignalRef = useRef<string>('')
+  const [signalChanged, setSignalChanged] = useState(false)
+  const [signalChangedAt, setSignalChangedAt] = useState<Date | null>(null)
+
+  useEffect(() => {
+    if (!multiTf?.best_direction) return
+    const curr = multiTf.best_direction
+    if (prevSignalRef.current && prevSignalRef.current !== curr) {
+      setSignalChanged(true)
+      setSignalChangedAt(new Date())
+      setTimeout(() => setSignalChanged(false), 10000)  // flash for 10s
+    }
+    prevSignalRef.current = curr
+  }, [multiTf?.best_direction])
+
   const applyTick = useCallback((price: number) => {
     if (!(price > 0)) return
     setPriceChange(price - (prevPriceRef.current || price))
@@ -333,5 +349,6 @@ export function useForecast() {
     loading, isConnected, isRefreshing, triggerManualCycle,
     liveGoldPrice, priceChange, wsStatus,
     lastTickPrice, tickBufferRef,
+    signalChanged, signalChangedAt,
   }
 }

@@ -290,4 +290,23 @@ export interface MultiTfSignal {
   scalp_threshold?: number
   timeframes:       Record<string, TfScore>
   shared_inputs?:   Record<string, unknown>
+  entry_price?:    number
+  atr?:            number
+  risk_distance?:  number
+  risk_usd?:       number
+  position_size_oz?: number
+  take_profits?: {
+    tp1: { price: number; rr_ratio: string; action: string; reward_usd: number }
+    tp2: { price: number; rr_ratio: string; action: string; reward_usd: number }
+    tp3: { price: number; rr_ratio: string; action: string; reward_usd: number }
+  }
+  expected_move?: {
+    direction:    string
+    min_pts:      number
+    max_pts:      number
+    prob_tp1:     number
+    prob_tp2:     number
+    prob_tp3:     number
+    note:         string
+  }
 }

@@ -39,7 +39,7 @@ export default function Page() {
     ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     isConnected, isRefreshing, triggerManualCycle,
     liveGoldPrice, priceChange, wsStatus,
-    lastTickPrice,
+    lastTickPrice, signalChanged, signalChangedAt,
   } = useForecast()
 
   const [toast, setToast]               = useState<string | null>(null)
@@ -285,10 +285,11 @@ export default function Page() {
               chartTf={chartTf}
               onTfChange={setChartTf}
               lastTickPrice={lastTickPrice}
+              multiTf={multiTf}
             />
           </div>
           <div style={{ minWidth: 0, overflow: 'hidden' }}>
-            <MultiTfPanel multiTf={multiTf} />
+            <MultiTfPanel multiTf={multiTf} signalChanged={signalChanged} signalChangedAt={signalChangedAt} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px', minWidth: 0 }}>
             <div style={{ minWidth: 0, overflow: 'hidden' }}>

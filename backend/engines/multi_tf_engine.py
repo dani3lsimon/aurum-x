@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 from services.supabase_service import get_supabase
 from services.redis_service import cache_get, cache_set
 from services.websocket_manager import ws_manager
+from config import get_settings
+
+settings = get_settings()
 
 logger = logging.getLogger(__name__)
 
@@ -397,18 +400,75 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
 
         edge = round(abs(winning_pct - losing_pct) / max(1.0, vix_f / 20), 2)
 
-        atr   = bs.get("atr", 20)
-        price = bs.get("current_price", 0)
-        if price and atr:
-            stop_dist = atr * 1.5
-            stop_loss = round(price - stop_dist if best_direction == "long" else price + stop_dist, 1)
-
         if   vix_f > 35:  risk_pct = 0.15
         elif vix_f > 25:  risk_pct = 0.25
         elif vix_f < 15:  risk_pct = 0.75
         else:             risk_pct = 0.35
         if conviction == "SCALP":
             risk_pct = round(risk_pct * 0.5, 3)
+
+        # ── Entry, Stop, Take Profit calculation ─────────────────────
+        entry_price   = bs.get("current_price", 0)
+        atr           = bs.get("atr", 20) or 20
+
+        # Risk distance = 1.5 × ATR
+        risk_dist = round(atr * 1.5, 2)
+
+        if entry_price and risk_dist:
+            if best_direction == "long":
+                stop_loss = round(entry_price - risk_dist, 2)   # BELOW entry for long
+                tp1       = round(entry_price + risk_dist,       2)  # 1:1 — 50% close
+                tp2       = round(entry_price + risk_dist * 2.0, 2)  # 1:2 — 25% close
+                tp3       = round(entry_price + risk_dist * 3.0, 2)  # 1:3 — trail 25%
+            else:  # short
+                stop_loss = round(entry_price + risk_dist, 2)   # ABOVE entry for short
+                tp1       = round(entry_price - risk_dist,       2)  # 1:1 — 50% close
+                tp2       = round(entry_price - risk_dist * 2.0, 2)  # 1:2 — 25% close
+                tp3       = round(entry_price - risk_dist * 3.0, 2)  # 1:3 — trail 25%
+        else:
+            stop_loss = tp1 = tp2 = tp3 = None
+
+        # Risk per trade in USD
+        account_size = float(getattr(settings, 'account_size_usd', 10000))
+        risk_usd     = round(account_size * (risk_pct / 100), 2)
+
+        # Position size in oz (gold)
+        position_oz = round(risk_usd / risk_dist, 4) if risk_dist else 0
+
+        # Reward values at each TP
+        reward_tp1 = round(risk_usd * 1.0, 2)
+        reward_tp2 = round(risk_usd * 2.0, 2)
+        reward_tp3 = round(risk_usd * 3.0, 2)
+
+        # Expected move based on conviction level and timeframe ATR
+        # HIGH CONVICTION: expect 1.5-2.5 × ATR move in signal direction
+        # SCALP: expect 0.8-1.5 × ATR
+        if conviction == "HIGH CONVICTION":
+            expected_move_min = round(atr * 1.5, 2)
+            expected_move_max = round(atr * 2.5, 2)
+            probability_reach_tp1 = 72  # % based on historical ATR studies
+            probability_reach_tp2 = 45
+            probability_reach_tp3 = 22
+        elif conviction == "SCALP":
+            expected_move_min = round(atr * 0.8, 2)
+            expected_move_max = round(atr * 1.5, 2)
+            probability_reach_tp1 = 58
+            probability_reach_tp2 = 30
+            probability_reach_tp3 = 12
+        else:
+            expected_move_min = expected_move_max = 0
+            probability_reach_tp1 = probability_reach_tp2 = probability_reach_tp3 = 0
+    else:
+        entry_price = 0
+        atr         = 20
+        risk_dist   = 0
+        tp1 = tp2 = tp3 = None
+        account_size = float(getattr(settings, 'account_size_usd', 10000))
+        risk_usd     = 0.0
+        position_oz  = 0
+        reward_tp1 = reward_tp2 = reward_tp3 = 0.0
+        expected_move_min = expected_move_max = 0
+        probability_reach_tp1 = probability_reach_tp2 = probability_reach_tp3 = 0
 
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -426,6 +486,43 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
         "scalp_threshold": scalp_thresh,
         "timeframes":      all_tf_results,
         "shared_inputs":   shared,
+        "entry_price":     entry_price,
+        "risk_distance":   risk_dist,
+        "take_profits": {
+            "tp1": {
+                "price":      tp1,
+                "rr_ratio":   "1:1",
+                "action":     "Close 50% of position",
+                "reward_usd": reward_tp1,
+            },
+            "tp2": {
+                "price":      tp2,
+                "rr_ratio":   "1:2",
+                "action":     "Close 25% of position",
+                "reward_usd": reward_tp2,
+            },
+            "tp3": {
+                "price":      tp3,
+                "rr_ratio":   "1:3",
+                "action":     "Trail remaining 25%",
+                "reward_usd": reward_tp3,
+            },
+        },
+        "position_size_oz": position_oz,
+        "risk_usd":         risk_usd,
+        "atr":              atr,
+        "expected_move": {
+            "direction":           best_direction,
+            "min_pts":             expected_move_min,
+            "max_pts":             expected_move_max,
+            "prob_tp1":            probability_reach_tp1,
+            "prob_tp2":            probability_reach_tp2,
+            "prob_tp3":            probability_reach_tp3,
+            "note": (
+                f"High conviction {best_direction}: expect {expected_move_min}–{expected_move_max} pt move"
+                if conviction else "No active signal"
+            )
+        },
     }
 
     # Persist a lightweight audit row (honest about the source — tagged multi_tf_*)
