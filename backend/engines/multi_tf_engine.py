@@ -544,5 +544,13 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
     await ws_manager.broadcast({"type": "multi_tf_update", "data": result})
     await cache_set(cache_key, result, ttl_seconds=60)
 
+    # Record signal if conviction fired
+    if result.get("conviction"):
+        from services.signal_journal import record_signal
+        try:
+            await record_signal(result)
+        except Exception as e:
+            logger.error(f"Signal journal error: {e}")
+
     logger.info(f"[multi-tf] {best_signal} | best_tf={best_tf} | edge={edge} | vix={vix_f}")
     return result

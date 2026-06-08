@@ -229,6 +229,13 @@ class AurumScheduler:
             key = f"gold_price_{rounded.strftime('%Y%m%d_%H%M')}"
             from services.redis_service import cache_set
             await cache_set(key, {"price": price, "ts": now.isoformat()}, ttl_seconds=2400)
+
+            # NEW: check open signal outcomes (TP/SL hits) against this price
+            try:
+                from services.signal_journal import update_open_signals
+                await update_open_signals(float(price))
+            except Exception as e:
+                logger.warning(f"Signal outcome check failed: {e}")
         except Exception as e:
             logger.error(f"Gold price recording failed: {e}")
 

@@ -218,6 +218,28 @@ async def refresh_multi_tf():
     return await evaluate_multi_tf()
 
 
+@router.get("/signal-history")
+async def get_signal_history_endpoint(limit: int = 100, timeframe: str | None = None):
+    """Full signal journal — every recorded signal and its current outcome."""
+    from services.signal_journal import get_signal_history
+    return await get_signal_history(limit=limit, timeframe=timeframe)
+
+
+@router.get("/signal-history/stats")
+async def get_signal_stats():
+    """Aggregate performance stats (win rate, TP hit rates, PnL) for the track record dashboard."""
+    from services.signal_journal import get_performance_stats
+    return await get_performance_stats()
+
+
+@router.get("/signal-history/open")
+async def get_open_signals():
+    """Currently open signals (status='OPEN')."""
+    sb = get_supabase()
+    result = sb.table("signal_history").select("*").eq("status", "OPEN").execute()
+    return result.data or []
+
+
 @router.get("/short-score/history")
 async def get_short_score_history(limit: int = 48):
     """Recent intraday_signals rows — score history for the ShortScoreWidget sparkline/log."""

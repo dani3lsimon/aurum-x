@@ -11,8 +11,9 @@ import COTPanel          from '@/components/dashboard/COTPanel'
 import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
 import MultiTfPanel      from '@/components/dashboard/MultiTfPanel'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
+import { SignalJournal } from '@/components/dashboard/SignalJournal'
 
-type TabId = 'live' | 'chart' | 'analysis'
+type TabId = 'live' | 'chart' | 'analysis' | 'journal'
 
 function ProbBox({ value, label, color, sub }: { value?: number; label: string; color: string; sub: string }) {
   return (
@@ -50,7 +51,7 @@ export default function Page() {
   // Restore persisted tab from localStorage after mount (avoids SSR/CSR mismatch)
   useEffect(() => {
     const saved = window.localStorage.getItem('aurum_tab') as TabId | null
-    if (saved === 'live' || saved === 'chart' || saved === 'analysis') {
+    if (saved === 'live' || saved === 'chart' || saved === 'analysis' || saved === 'journal') {
       setActiveTab(saved)
     }
   }, [])
@@ -93,6 +94,7 @@ export default function Page() {
     { id: 'live',     label: '① LIVE' },
     { id: 'chart',    label: '② CHART & AGENTS' },
     { id: 'analysis', label: '③ ANALYSIS' },
+    { id: 'journal',  label: '④ TRACK RECORD' },
   ]
 
   return (
@@ -311,7 +313,7 @@ export default function Page() {
           </div>
 
           <div style={{ minWidth: 0, overflow: 'hidden' }}>
-            <MultiTfPanel multiTf={multiTf} signalChanged={signalChanged} signalChangedAt={signalChangedAt} />
+            <MultiTfPanel multiTf={multiTf} signalChanged={signalChanged} signalChangedAt={signalChangedAt} livePrice={liveGoldPrice || forecast?.gold_price || 0} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px', minWidth: 0 }}>
             <div style={{ minWidth: 0, overflow: 'hidden' }}>
@@ -351,6 +353,11 @@ export default function Page() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Tab 4: TRACK RECORD ──────────────────────────────────────────── */}
+      {activeTab === 'journal' && (
+        <SignalJournal livePrice={liveGoldPrice || forecast?.gold_price || 0} />
       )}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}

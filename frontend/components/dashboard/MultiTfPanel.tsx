@@ -5,6 +5,7 @@ interface Props {
   multiTf: MultiTfSignal | null
   signalChanged?: boolean
   signalChangedAt?: Date | null
+  livePrice?: number
 }
 
 const TF_ORDER: { key: string; label: string }[] = [
@@ -78,7 +79,7 @@ function TfColumn({ label, tf }: { label: string; tf: TfScore | undefined }) {
   )
 }
 
-export default function MultiTfPanel({ multiTf, signalChanged, signalChangedAt }: Props) {
+export default function MultiTfPanel({ multiTf, signalChanged, signalChangedAt, livePrice }: Props) {
   const dirColor =
     multiTf?.best_direction === 'long'  ? '#22c55e' :
     multiTf?.best_direction === 'short' ? '#ef4444' : '#94a3b8'
@@ -133,6 +134,93 @@ export default function MultiTfPanel({ multiTf, signalChanged, signalChangedAt }
           <div style={{ fontSize: '13px', color: isLong ? '#22c55e' : '#ef4444', letterSpacing: '0.1em', marginBottom: '12px' }}>
             {multiTf?.conviction ?? '—'} · {multiTf?.best_timeframe?.toUpperCase()}
           </div>
+
+          {/* Live P&L — updates on every tick */}
+          {multiTf?.entry_price && livePrice ? (() => {
+            const entryPrice = multiTf.entry_price as number
+            const pnlPts   = isLong
+              ? livePrice - entryPrice
+              : entryPrice - livePrice
+            const riskDist = multiTf.risk_distance || 1
+            const pnlUsd   = multiTf.risk_usd
+              ? (pnlPts / riskDist) * multiTf.risk_usd
+              : 0
+
+            // Progress toward TP1 (0-100%)
+            const tp1      = multiTf.take_profits?.tp1?.price
+            const sl       = multiTf.stop_loss
+            const progress = tp1
+              ? Math.max(0, Math.min(100, (pnlPts / Math.abs(tp1 - entryPrice)) * 100))
+              : 0
+
+            const pnlColor = pnlPts >= 0 ? '#22c55e' : '#ef4444'
+            const inProfit = pnlPts >= 0
+
+            // Distance to next target
+            const distToTp1 = tp1 ? Math.abs(tp1 - livePrice).toFixed(2) : null
+            const distToSl  = sl  ? Math.abs(livePrice - sl).toFixed(2)  : null
+
+            return (
+              <div style={{ marginBottom: '10px' }}>
+                {/* Live P&L hero number */}
+                <div style={{
+                  padding: '10px',
+                  background: `${pnlColor}10`,
+                  border: `1px solid ${pnlColor}40`,
+                  textAlign: 'center',
+                  marginBottom: '6px',
+                }}>
+                  <div style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.14em', marginBottom: '4px' }}>
+                    LIVE P&L
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 800, color: pnlColor, letterSpacing: '-0.01em' }}>
+                    {pnlPts >= 0 ? '+' : ''}{pnlPts.toFixed(2)} PTS
+                  </div>
+                  <div style={{ fontSize: '12px', color: pnlColor, opacity: 0.8 }}>
+                    {pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(2)} USD
+                  </div>
+                </div>
+
+                {/* Progress bar toward TP1 */}
+                {tp1 && (
+                  <div style={{ marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#4a5068', marginBottom: '3px' }}>
+                      <span>ENTRY ${entryPrice.toFixed(0)}</span>
+                      <span style={{ color: '#22c55e' }}>TP1 ${tp1.toFixed(0)}</span>
+                    </div>
+                    <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
+                      <div style={{
+                        width: `${Math.max(0, Math.min(100, progress))}%`,
+                        height: '100%',
+                        background: inProfit ? '#22c55e' : '#ef4444',
+                        transition: 'width 0.2s ease',
+                        boxShadow: `0 0 6px ${pnlColor}60`,
+                      }} />
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#4a5068', marginTop: '3px', textAlign: 'right' }}>
+                      {progress.toFixed(0)}% to TP1
+                    </div>
+                  </div>
+                )}
+
+                {/* Distance to next levels */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                  {distToTp1 && (
+                    <div style={{ padding: '5px 8px', background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)', fontSize: '11px' }}>
+                      <div style={{ color: '#4a5068', fontSize: '9px', letterSpacing: '0.1em', marginBottom: '2px' }}>TO TP1</div>
+                      <div style={{ color: '#22c55e', fontWeight: 700 }}>{distToTp1} PTS</div>
+                    </div>
+                  )}
+                  {distToSl && (
+                    <div style={{ padding: '5px 8px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)', fontSize: '11px' }}>
+                      <div style={{ color: '#4a5068', fontSize: '9px', letterSpacing: '0.1em', marginBottom: '2px' }}>TO STOP</div>
+                      <div style={{ color: '#ef4444', fontWeight: 700 }}>{distToSl} PTS</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })() : null}
 
           {/* Trade levels — the key section */}
           {multiTf?.entry_price ? (
