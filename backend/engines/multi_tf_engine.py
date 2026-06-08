@@ -37,6 +37,13 @@ CONDITION_WEIGHTS = {
     "cot":    1, "etf":   1, "risk":  1, "break": 2, "news": 1
 }
 
+# Conditions that move with the live cTrader tick (re-derivable from the
+# current price alone) vs. conditions that only refresh on the backend's
+# 5-minute cycle (macro/fundamental data). Surfaced honestly to the frontend
+# so it can label which numbers are "live" vs "cached" rather than implying
+# everything updates in real time.
+PRICE_SENSITIVE = {"vwap", "break", "delta"}
+
 TF_OANDA_MAP = {
     "15min": {"granularity": "M15", "count": 16},
     "1h":    {"granularity": "H1",  "count": 25},
@@ -235,6 +242,11 @@ def score_one_timeframe(tf_data: dict, shared: dict, cot_decay: float, etf_decay
     short_pct = round(min(100.0, (short_raw / MAX_SCORE) * 100), 1)
     long_pct  = round(min(100.0, (long_raw  / MAX_SCORE) * 100), 1)
 
+    # Tag each condition honestly: does it move with the live tick, or is it
+    # cached macro/fundamental data refreshed on the backend's cycle?
+    for cond_name, cond in conditions.items():
+        cond["live"] = cond_name in PRICE_SENSITIVE
+
     return {
         "short_pct":       short_pct,
         "long_pct":        long_pct,
@@ -246,6 +258,8 @@ def score_one_timeframe(tf_data: dict, shared: dict, cot_decay: float, etf_decay
         "atr":             tf_data.get("atr"),
         "current_price":   tf_data.get("current_price"),
         "break_direction": tf_data.get("break_direction"),
+        "prior_high":      tf_data.get("prior_high"),
+        "prior_low":       tf_data.get("prior_low"),
     }
 
 
@@ -472,6 +486,22 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
 
     timestamp = datetime.now(timezone.utc).isoformat()
 
+    # Per-condition directional-contribution audit — exposes exactly how many
+    # points each condition contributed to long vs short on each timeframe,
+    # so a condition that's permanently pinned to one side can never hide.
+    contribution_audit = {
+        tf: {
+            cond: {
+                "long":  CONDITION_WEIGHTS.get(cond, 0) if c.get("long_met")  else 0,
+                "short": CONDITION_WEIGHTS.get(cond, 0) if c.get("short_met") else 0,
+                "value": c.get("value", ""),
+                "live":  c.get("live", False),
+            }
+            for cond, c in scores.get("conditions", {}).items()
+        }
+        for tf, scores in all_tf_results.items() if "conditions" in scores
+    }
+
     result = {
         "timestamp":       timestamp,
         "best_signal":     best_signal,
@@ -486,6 +516,7 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
         "scalp_threshold": scalp_thresh,
         "timeframes":      all_tf_results,
         "shared_inputs":   shared,
+        "contribution_audit": contribution_audit,
         "entry_price":     entry_price,
         "risk_distance":   risk_dist,
         "take_profits": {

@@ -266,7 +266,26 @@
       "Bash(curl -s --max-time 5 http://localhost:8000/forecast/multi-tf)",
       "Bash(curl -s --max-time 15 https://aurum-x-backend-production.up.railway.app/forecast/multi-tf)",
       "Bash(curl -s --max-time 20 https://aurum-x-backend-production.up.railway.app/forecast/latest)",
-      "Bash(curl -s --max-time 20 https://aurum-x-backend-production.up.railway.app/agents/sentiment)"
+      "Bash(curl -s --max-time 20 https://aurum-x-backend-production.up.railway.app/agents/sentiment)",
+      "mcp__364979bd-6f4b-4355-bf3a-64a04b70a032__list_extensions",
+      "Bash(curl -s https://aurum-x-backend-production.up.railway.app/forecast/signal-history)",
+      "Bash(curl -s https://aurum-x-backend-production.up.railway.app/forecast/signal-history/stats)",
+      "Bash(curl -s https://aurum-x-backend-production.up.railway.app/forecast/signal-history/open)",
+      "Bash(curl -s \"https://aurum-x-backend-production.up.railway.app/forecast/signal-history\")",
+      "Bash(curl -s \"https://aurum-x-backend-production.up.railway.app/forecast/signal-history/stats\")",
+      "Bash(curl -s \"https://aurum-x-backend-production.up.railway.app/forecast/signal-history/open\")",
+      "Bash(curl -s \"https://aurum-x-backend-production.up.railway.app/forecast/signal-history?limit=10\")",
+      "Bash(mkdir -p /c/Users/dani3/Desktop/docxbuild)",
+      "Bash(npm init *)",
+      "Bash(python \"C:\\\\Users\\\\dani3\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\aa0f25a6-e4b5-410d-a887-a137b698854c\\\\6507f368-9570-4296-91b1-3202f956e80c\\\\skills\\\\docx\\\\scripts\\\\office\\\\validate.py\" \"AURUM-X Technical Report - Panels and Agents.docx\")",
+      "Bash(pip install *)",
+      "Bash(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python \"C:\\\\Users\\\\dani3\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\aa0f25a6-e4b5-410d-a887-a137b698854c\\\\6507f368-9570-4296-91b1-3202f956e80c\\\\skills\\\\docx\\\\scripts\\\\office\\\\validate.py\" \"AURUM-X Technical Report - Panels and Agents.docx\")",
+      "Bash(curl -s https://aurum-x-backend-production.up.railway.app/forecast/patterns)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://aurum-x-backend-production.up.railway.app/forecast/multi-tf)",
+      "Bash(curl -s \"https://aurum-x-backend-production.up.railway.app/forecast/patterns\")",
+      "Bash(curl -s \"https://aurum-x-backend-production.up.railway.app/agents/technical-fusion\")",
+      "Bash(sed -n '30,45p' engines/multi_tf_engine.py)",
+      "Bash(sed -n '230,248p' engines/multi_tf_engine.py)"
     ]
   }
 }

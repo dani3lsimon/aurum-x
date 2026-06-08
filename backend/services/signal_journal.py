@@ -128,17 +128,98 @@ async def update_open_signals(current_price: float):
 
 
 async def _check_and_update_signal(signal: dict, price: float, sb):
-    """Check one signal against current price and update DB if anything hit."""
+    """
+    Check one signal against current price and update DB with proper
+    R-multiple partial-close accounting.
+
+    Model: 50% closes at TP1 / 25% at TP2 / 25% at TP3 (trailed). Once TP1
+    hits, the stop moves to breakeven on the remaining position — so a
+    stop-out after TP1 is never a full loss; it locks in the realized R from
+    the TP1 portion and breaks even on the rest.
+
+    realized_r is blended: 0.50R from TP1 + 0.25*2R from TP2 + 0.25*3R from TP3,
+    or -1.0R on a full stop with no TPs hit, or partial-R + 0 on a
+    breakeven-stop-after-TP1 close.
+    """
     sid       = signal["id"]
     direction = signal["direction"]
     entry     = float(signal["entry_price"] or 0)
-    sl        = float(signal["stop_loss"] or 0)
-    tp1       = float(signal["tp1_price"] or 0)
-    tp2       = float(signal["tp2_price"] or 0)
-    tp3       = float(signal["tp3_price"] or 0)
-
-    updates   = {}
+    orig_stop = float(signal["stop_loss"] or 0)
+    tp1, tp2, tp3 = (float(signal.get(k) or 0) for k in ("tp1_price", "tp2_price", "tp3_price"))
+    risk_dist = abs(entry - orig_stop) or 1.0
     now       = datetime.now(timezone.utc).isoformat()
+    updates: dict = {}
+    long      = direction == "long"
+
+    def hit(target, is_long):
+        return price >= target if is_long else price <= target
+
+    # Effective stop: breakeven once TP1 has been hit
+    stop_now      = entry if signal.get("tp1_hit") else orig_stop
+    stop_breached = (price <= stop_now) if long else (price >= stop_now)
+
+    # Portions: 50% at TP1, 25% at TP2, 25% at TP3
+    tp1_hit = bool(signal.get("tp1_hit")) or (tp1 and hit(tp1, long))
+    tp2_hit = bool(signal.get("tp2_hit")) or (tp1_hit and tp2 and hit(tp2, long))
+    tp3_hit = bool(signal.get("tp3_hit")) or (tp2_hit and tp3 and hit(tp3, long))
+
+    # Record newly-hit TPs
+    if tp1_hit and not signal.get("tp1_hit"):
+        updates.update({"tp1_hit": True, "tp1_hit_time": now,
+                        "stop_moved_to_be": True, "status": "TP1_HIT"})
+        logger.info(f"TP1 HIT: {signal['signal_id']} @ ${price} — stop moved to breakeven")
+    if tp2_hit and not signal.get("tp2_hit"):
+        updates.update({"tp2_hit": True, "tp2_hit_time": now, "status": "TP2_HIT"})
+        logger.info(f"TP2 HIT: {signal['signal_id']} @ ${price}")
+    if tp3_hit and not signal.get("tp3_hit"):
+        updates.update({"tp3_hit": True, "tp3_hit_time": now})
+        logger.info(f"TP3 HIT (FULL): {signal['signal_id']} @ ${price}")
+
+    # Determine if the trade is now fully closed and compute blended R
+    closed       = False
+    outcome      = None
+    result_label = None
+    realized_r   = 0.0
+    if tp1_hit: realized_r += 0.50 * 1.0
+    if tp2_hit: realized_r += 0.25 * 2.0
+    if tp3_hit: realized_r += 0.25 * 3.0
+
+    if tp3_hit:
+        closed       = True
+        outcome      = "WIN"
+        result_label = "TP3"
+    elif stop_breached and not signal.get("stopped_out"):
+        closed      = True
+        closed_frac = (0.50 if tp1_hit else 0) + (0.25 if tp2_hit else 0)
+        remaining   = 1.0 - closed_frac
+        if signal.get("tp1_hit") or tp1_hit:
+            realized_r  += remaining * 0.0          # breakeven stop on remainder
+            outcome      = "WIN" if realized_r > 0.01 else "BREAKEVEN"
+            result_label = "STOPPED_BE_AFTER_TP"
+        else:
+            realized_r   = -1.0                      # full stop, no TP hit
+            outcome      = "LOSS"
+            result_label = "STOPPED"
+
+    if closed:
+        realized_pts = round(realized_r * risk_dist, 2)
+        risk_usd     = float(signal.get("risk_usd") or 0)
+        updates.update({
+            "stopped_out":      stop_breached,
+            "stop_hit_time":    now if stop_breached else signal.get("stop_hit_time"),
+            "status":           "CLOSED",
+            "closed_time":      now,
+            "realized_r":       round(realized_r, 3),
+            "realized_pnl_pts": realized_pts,
+            "realized_pnl_usd": round(realized_r * risk_usd, 2),
+            "result_label":     result_label,
+            "outcome_class":    outcome,
+            "portions_closed": {
+                "tp1": 0.50 if tp1_hit else 0,
+                "tp2": 0.25 if tp2_hit else 0,
+                "tp3": 0.25 if tp3_hit else 0,
+            },
+        })
 
     # Update price extremes
     cur_max = float(signal.get("max_price") or entry)
@@ -148,91 +229,11 @@ async def _check_and_update_signal(signal: dict, price: float, sb):
     if price < cur_min:
         updates["min_price"] = price
 
-    # MAE/MFE
-    if direction == "long":
-        mfe = round(max(price, cur_max) - entry, 2)
-        mae = round(entry - min(price, cur_min), 2)
-    else:
-        mfe = round(entry - min(price, cur_min), 2)
-        mae = round(max(price, cur_max) - entry, 2)
-    updates["max_favorable_excursion"] = max(mfe, float(signal.get("max_favorable_excursion") or 0))
-    updates["max_adverse_excursion"]   = max(mae, float(signal.get("max_adverse_excursion") or 0))
-
-    # Check targets and stop
-    if direction == "long":
-        # Stop loss hit
-        if sl and price <= sl and not signal.get("stopped_out"):
-            pnl = round(sl - entry, 2)
-            updates.update({
-                "stopped_out": True,
-                "stop_hit_time": now,
-                "status": "CLOSED",
-                "closed_time": now,
-                "realized_pnl_pts": pnl,
-                "realized_pnl_usd": round(pnl * float(signal.get("risk_usd", 0) or 0) /
-                                    max(float(signal.get("risk_distance", 1) or 1), 0.01), 2),
-                "result_label": "STOPPED",
-            })
-
-        # TP1
-        elif tp1 and price >= tp1 and not signal.get("tp1_hit"):
-            updates["tp1_hit"] = True
-            updates["tp1_hit_time"] = now
-            updates["status"] = "TP1_HIT"
-            logger.info(f"TP1 HIT: {signal['signal_id']} @ ${price}")
-
-        # TP2 (only after TP1)
-        if tp2 and price >= tp2 and signal.get("tp1_hit") and not signal.get("tp2_hit"):
-            updates["tp2_hit"] = True
-            updates["tp2_hit_time"] = now
-            updates["status"] = "TP2_HIT"
-            logger.info(f"TP2 HIT: {signal['signal_id']} @ ${price}")
-
-        # TP3 (closes signal)
-        if tp3 and price >= tp3 and signal.get("tp2_hit") and not signal.get("tp3_hit"):
-            pnl = round(tp3 - entry, 2)
-            updates.update({
-                "tp3_hit": True,
-                "tp3_hit_time": now,
-                "status": "CLOSED",
-                "closed_time": now,
-                "realized_pnl_pts": pnl,
-                "result_label": "TP3",
-            })
-            logger.info(f"TP3 HIT (FULL): {signal['signal_id']} @ ${price}")
-
-    else:  # short
-        if sl and price >= sl and not signal.get("stopped_out"):
-            pnl = round(entry - sl, 2)
-            updates.update({
-                "stopped_out": True,
-                "stop_hit_time": now,
-                "status": "CLOSED",
-                "closed_time": now,
-                "realized_pnl_pts": -pnl,
-                "result_label": "STOPPED",
-            })
-
-        elif tp1 and price <= tp1 and not signal.get("tp1_hit"):
-            updates["tp1_hit"] = True
-            updates["tp1_hit_time"] = now
-            updates["status"] = "TP1_HIT"
-
-        if tp2 and price <= tp2 and signal.get("tp1_hit") and not signal.get("tp2_hit"):
-            updates["tp2_hit"] = True
-            updates["tp2_hit_time"] = now
-            updates["status"] = "TP2_HIT"
-
-        if tp3 and price <= tp3 and signal.get("tp2_hit") and not signal.get("tp3_hit"):
-            pnl = round(entry - tp3, 2)
-            updates.update({
-                "tp3_hit": True,
-                "tp3_hit_time": now,
-                "status": "CLOSED",
-                "closed_time": now,
-                "realized_pnl_pts": pnl,
-                "result_label": "TP3",
-            })
+    # Track MAE/MFE for trade-quality analysis
+    mfe = (price - entry) if long else (entry - price)
+    mae = (entry - price) if long else (price - entry)
+    updates["max_favorable_excursion"] = round(max(mfe, float(signal.get("max_favorable_excursion") or 0)), 2)
+    updates["max_adverse_excursion"]   = round(max(mae, float(signal.get("max_adverse_excursion") or 0)), 2)
 
     if updates:
         sb.table("signal_history").update(updates).eq("id", sid).execute()
@@ -260,37 +261,83 @@ async def get_performance_stats() -> dict:
         return {"total": 0}
 
     total    = len(data)
-    wins     = [s for s in data if s.get("result_label") in ["TP1","TP2","TP3","EXPIRED_PROFIT"]]
-    losses   = [s for s in data if s.get("result_label") in ["STOPPED","EXPIRED_LOSS"]]
+
+    # Prefer the new outcome_class (set by the R-multiple accounting in
+    # _check_and_update_signal); fall back to the legacy result_label for
+    # rows recorded before this migration so historical stats don't vanish.
+    def _outcome(s):
+        oc = s.get("outcome_class")
+        if oc:
+            return oc
+        rl = s.get("result_label")
+        if rl in ("TP1", "TP2", "TP3", "EXPIRED_PROFIT"):
+            return "WIN"
+        if rl in ("STOPPED", "EXPIRED_LOSS"):
+            return "LOSS"
+        return None
+
+    wins       = [s for s in data if _outcome(s) == "WIN"]
+    losses     = [s for s in data if _outcome(s) == "LOSS"]
+    breakevens = [s for s in data if _outcome(s) == "BREAKEVEN"]
+    closed     = wins + losses + breakevens
+
     tp1_hits = sum(1 for s in data if s.get("tp1_hit"))
     tp2_hits = sum(1 for s in data if s.get("tp2_hit"))
     tp3_hits = sum(1 for s in data if s.get("tp3_hit"))
+
+    def _r(s):
+        r = s.get("realized_r")
+        return float(r) if r is not None else 0.0
+
+    r_values   = [_r(s) for s in closed if s.get("realized_r") is not None]
+    avg_r      = round(sum(r_values) / len(r_values), 3) if r_values else 0.0
+    pos_r      = [r for r in r_values if r > 0]
+    neg_r      = [r for r in r_values if r < 0]
+    profit_factor_r = round(sum(pos_r) / abs(sum(neg_r)), 2) if neg_r else (999 if pos_r else 0)
 
     total_pnl = sum(float(s.get("realized_pnl_pts") or 0) for s in data)
     avg_win   = sum(float(s.get("realized_pnl_pts") or 0) for s in wins)   / len(wins)   if wins   else 0
     avg_loss  = sum(float(s.get("realized_pnl_pts") or 0) for s in losses) / len(losses) if losses else 0
 
     by_tf = {}
-    for tf in ["15min","1h","4h"]:
-        tf_signals = [s for s in data if s.get("timeframe") == tf]
-        tf_wins    = [s for s in tf_signals if s.get("result_label") in ["TP1","TP2","TP3","EXPIRED_PROFIT"]]
-        by_tf[tf]  = {
-            "total":   len(tf_signals),
-            "wins":    len(tf_wins),
-            "win_pct": round(len(tf_wins) / len(tf_signals) * 100, 1) if tf_signals else 0,
+    for tf in ["15min", "1h", "4h"]:
+        tf_signals   = [s for s in data   if s.get("timeframe") == tf]
+        tf_closed    = [s for s in closed if s.get("timeframe") == tf]
+        tf_wins      = [s for s in tf_closed if _outcome(s) == "WIN"]
+        tf_losses    = [s for s in tf_closed if _outcome(s) == "LOSS"]
+        tf_be        = [s for s in tf_closed if _outcome(s) == "BREAKEVEN"]
+        tf_r         = [_r(s) for s in tf_closed if s.get("realized_r") is not None]
+        by_tf[tf] = {
+            "total":      len(tf_signals),
+            "closed":     len(tf_closed),
+            "wins":       len(tf_wins),
+            "losses":     len(tf_losses),
+            "breakevens": len(tf_be),
+            "win_pct":    round(len(tf_wins) / len(tf_closed) * 100, 1) if tf_closed else 0,
+            "avg_r":      round(sum(tf_r) / len(tf_r), 3) if tf_r else 0.0,
+            "expectancy": round(sum(tf_r) / len(tf_r), 3) if tf_r else 0.0,
         }
 
     return {
-        "total":       total,
-        "wins":        len(wins),
-        "losses":      len(losses),
-        "win_pct":     round(len(wins) / total * 100, 1) if total else 0,
-        "tp1_hit_pct": round(tp1_hits / total * 100, 1) if total else 0,
-        "tp2_hit_pct": round(tp2_hits / total * 100, 1) if total else 0,
-        "tp3_hit_pct": round(tp3_hits / total * 100, 1) if total else 0,
-        "total_pnl_pts": round(total_pnl, 2),
-        "avg_win_pts": round(avg_win, 2),
-        "avg_loss_pts": round(avg_loss, 2),
-        "profit_factor": round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else 999,
-        "by_timeframe": by_tf,
+        "total":          total,
+        "closed":         len(closed),
+        "wins":           len(wins),
+        "losses":         len(losses),
+        "breakevens":     len(breakevens),
+        "win_pct":        round(len(wins) / len(closed) * 100, 1) if closed else 0,
+        "tp1_hit_pct":    round(tp1_hits / total * 100, 1) if total else 0,
+        "tp2_hit_pct":    round(tp2_hits / total * 100, 1) if total else 0,
+        "tp3_hit_pct":    round(tp3_hits / total * 100, 1) if total else 0,
+        # R-multiple metrics — the honest measure of whether this system
+        # makes money. avg_R == expectancy: positive means net profitable
+        # over time at constant risk-per-trade.
+        "avg_r":          avg_r,
+        "expectancy":     avg_r,
+        "profit_factor_r": profit_factor_r,
+        # Legacy point-based metrics retained for backward compatibility
+        "total_pnl_pts":  round(total_pnl, 2),
+        "avg_win_pts":    round(avg_win, 2),
+        "avg_loss_pts":   round(avg_loss, 2),
+        "profit_factor":  round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else 999,
+        "by_timeframe":   by_tf,
     }

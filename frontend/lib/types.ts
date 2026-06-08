@@ -259,6 +259,7 @@ export interface TfCondition {
   short_met: boolean
   long_met:  boolean
   value:     string
+  live?:     boolean
 }
 
 export interface TfScore {
@@ -271,6 +272,8 @@ export interface TfScore {
   delta:            number
   current_price?:   number
   break_direction?: string
+  prior_high?:      number
+  prior_low?:       number
   granularity?:     string
   error?:           string
   conditions:       Record<string, TfCondition>

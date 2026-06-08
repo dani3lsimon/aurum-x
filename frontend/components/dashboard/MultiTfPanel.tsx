@@ -19,7 +19,84 @@ function fmt(n: number | null | undefined, digits = 2): string {
   return n.toFixed(digits)
 }
 
-function TfColumn({ label, tf }: { label: string; tf: TfScore | undefined }) {
+// Mirrors backend CONDITION_WEIGHTS / MAX_SCORE (engines/multi_tf_engine.py) —
+// needed to honestly re-derive the displayed long/short % between backend
+// refreshes when nudging price-sensitive conditions with the live tick.
+const CONDITION_WEIGHTS: Record<string, number> = {
+  dxy: 2, yield: 2, vwap: 1, delta: 2, cot: 1, etf: 1, risk: 1, break: 2, news: 1,
+}
+const MAX_SCORE = 14.0
+const COND_LABEL: Record<string, string> = {
+  dxy: 'DXY', yield: 'YIELD', vwap: 'VWAP', delta: 'DELTA', cot: 'COT',
+  etf: 'ETF', risk: 'RISK', break: 'BREAK', news: 'NEWS', interaction: 'CONFLUENCE',
+}
+
+/**
+ * Semi-live recompute (FIX 3 — "honest version"):
+ * The backend's authoritative score refreshes every ~5 minutes. Between
+ * refreshes, nudge ONLY the price-sensitive conditions (vwap, break) using
+ * the live cTrader tick, re-sum, and re-derive the displayed percentage.
+ * Everything else (macro/fundamental conditions) stays exactly as the
+ * backend last computed it — never fabricated, just clearly labelled.
+ */
+function recomputeWithLivePrice(tf: TfScore, livePrice?: number) {
+  const conditions = tf.conditions || {}
+  if (!livePrice || !conditions) {
+    return { longPct: tf.long_pct ?? 0, shortPct: tf.short_pct ?? 0, conditions }
+  }
+
+  let shortRaw = tf.short_raw ?? 0
+  let longRaw  = tf.long_raw  ?? 0
+  const next: Record<string, any> = { ...conditions }
+
+  const nudge = (key: 'vwap' | 'break', nowLong: boolean, nowShort: boolean, value: string) => {
+    const cond = conditions[key]
+    if (!cond) return
+    const w = CONDITION_WEIGHTS[key] ?? 0
+    if (cond.long_met)  longRaw  -= w
+    if (cond.short_met) shortRaw -= w
+    if (nowLong)  longRaw  += w
+    if (nowShort) shortRaw += w
+    next[key] = { ...cond, long_met: nowLong, short_met: nowShort, value, live: true }
+  }
+
+  if (tf.vwap != null) {
+    nudge('vwap', livePrice > tf.vwap, livePrice < tf.vwap,
+      `$${livePrice.toFixed(2)} vs VWAP $${tf.vwap.toFixed(2)} · live tick`)
+  }
+  if (tf.prior_high != null && tf.prior_low != null) {
+    const up = livePrice > tf.prior_high
+    const down = livePrice < tf.prior_low
+    nudge('break', up, down,
+      `Break ${up ? 'up' : down ? 'down' : 'neutral'} (range $${tf.prior_low.toFixed(2)}-$${tf.prior_high.toFixed(2)}) · live tick`)
+  }
+
+  const shortPct = Math.round(Math.min(100, (shortRaw / MAX_SCORE) * 100) * 10) / 10
+  const longPct  = Math.round(Math.min(100, (longRaw  / MAX_SCORE) * 100) * 10) / 10
+
+  return { longPct, shortPct, conditions: next }
+}
+
+function ConditionRow({ name, cond }: { name: string; cond: any }) {
+  const dir = cond.long_met ? 'long' : cond.short_met ? 'short' : 'neutral'
+  const color = dir === 'long' ? '#22c55e' : dir === 'short' ? '#ef4444' : '#4a5068'
+  const isLive = !!cond.live
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6rem', color: '#6b7494', lineHeight: 1.5 }}>
+      <span style={{ color: isLive ? '#ff7744' : '#4a5068', minWidth: '46px', letterSpacing: '0.06em' }}>
+        {isLive ? '◆ LIVE' : '· cached'}
+      </span>
+      <span style={{ color: '#4a5068', minWidth: '52px', fontWeight: 700, letterSpacing: '0.06em' }}>
+        {COND_LABEL[name] || name.toUpperCase()}
+      </span>
+      <span style={{ color, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {cond.value}
+      </span>
+    </div>
+  )
+}
+
+function TfColumn({ label, tf, livePrice }: { label: string; tf: TfScore | undefined; livePrice?: number }) {
   if (!tf || tf.error) {
     return (
       <div className="flex flex-col gap-2" style={{ minWidth: 0 }}>
@@ -31,8 +108,7 @@ function TfColumn({ label, tf }: { label: string; tf: TfScore | undefined }) {
     )
   }
 
-  const longPct  = tf.long_pct ?? 0
-  const shortPct = tf.short_pct ?? 0
+  const { longPct, shortPct, conditions } = recomputeWithLivePrice(tf, livePrice)
   const badge =
     longPct > shortPct && longPct >= 60 ? { text: '▲ LONG BIAS',  color: '#22c55e' } :
     shortPct > longPct && shortPct >= 60 ? { text: '▼ SHORT BIAS', color: '#ef4444' } :
@@ -75,6 +151,17 @@ function TfColumn({ label, tf }: { label: string; tf: TfScore | undefined }) {
       <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
         ATR {fmt(tf.atr)} · VWAP {tf.vwap ? `$${fmt(tf.vwap, 0)}` : '—'}
       </div>
+
+      {/* Per-condition breakdown — honestly tagged: ◆ LIVE conditions are
+          nudged from the live cTrader tick between backend refreshes;
+          · cached conditions reflect the backend's last ~5-min computation. */}
+      {conditions && Object.keys(conditions).length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', minHeight: '108px' }}>
+          {Object.entries(conditions)
+            .filter(([name]) => name !== 'interaction')
+            .map(([name, cond]) => <ConditionRow key={name} name={name} cond={cond} />)}
+        </div>
+      )}
     </div>
   )
 }
@@ -116,7 +203,7 @@ export default function MultiTfPanel({ multiTf, signalChanged, signalChangedAt, 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', minWidth: 0 }}>
 
         {TF_ORDER.map(({ key, label }) => (
-          <TfColumn key={key} label={label} tf={multiTf?.timeframes?.[key]} />
+          <TfColumn key={key} label={label} tf={multiTf?.timeframes?.[key]} livePrice={livePrice} />
         ))}
 
         {/* Best Signal column — 4th column */}
