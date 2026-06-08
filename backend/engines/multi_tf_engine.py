@@ -546,6 +546,13 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
 
     # Record signal if conviction fired
     if result.get("conviction"):
+        # Fuse deterministic SMC structure with fundamentals into a concrete trade thesis
+        from agents.technical_fusion_agent import TechnicalFusionAgent
+        try:
+            result["technical_fusion"] = await TechnicalFusionAgent().run()
+        except Exception as e:
+            logger.warning(f"Fusion agent error: {e}")
+
         from services.signal_journal import record_signal
         try:
             await record_signal(result)

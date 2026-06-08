@@ -12,6 +12,7 @@ import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
 import MultiTfPanel      from '@/components/dashboard/MultiTfPanel'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 import { SignalJournal } from '@/components/dashboard/SignalJournal'
+import TechnicalPanel    from '@/components/dashboard/TechnicalPanel'
 
 type TabId = 'live' | 'chart' | 'analysis' | 'journal'
 
@@ -314,6 +315,9 @@ export default function Page() {
 
           <div style={{ minWidth: 0, overflow: 'hidden' }}>
             <MultiTfPanel multiTf={multiTf} signalChanged={signalChanged} signalChangedAt={signalChangedAt} livePrice={liveGoldPrice || forecast?.gold_price || 0} />
+          </div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <TechnicalPanel />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px', minWidth: 0 }}>
             <div style={{ minWidth: 0, overflow: 'hidden' }}>

@@ -218,6 +218,16 @@ async def refresh_multi_tf():
     return await evaluate_multi_tf()
 
 
+@router.get("/patterns")
+async def get_smc_patterns():
+    """Deterministic Smart Money Concepts pattern engine — swing structure,
+    BOS/ChoCH, liquidity grabs, fair value gaps, order/breaker blocks,
+    head & shoulders, double tops/bottoms — across 15min/1h/4h with a
+    blended net confluence score and timeframe-alignment verdict."""
+    from engines.patterns_engine import analyze_all
+    return await analyze_all()
+
+
 @router.get("/signal-history")
 async def get_signal_history_endpoint(limit: int = 100, timeframe: str | None = None):
     """Full signal journal — every recorded signal and its current outcome."""

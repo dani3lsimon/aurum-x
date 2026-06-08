@@ -89,6 +89,7 @@ async def record_signal(multi_tf_result: dict) -> str | None:
         "min_price":      multi_tf_result.get("entry_price"),
         "status":         "OPEN",
         "conditions_snapshot": multi_tf_result.get("timeframes", {}).get(tf, {}),
+        "fusion_assessment": multi_tf_result.get("technical_fusion"),
     }
 
     try:

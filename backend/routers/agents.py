@@ -41,6 +41,15 @@ async def get_etf_flows():
     return await c.get_etf_flows()
 
 
+@router.get("/technical-fusion")
+async def get_technical_fusion():
+    """Senior-trader fusion of deterministic SMC price-action structure with
+    fundamental agent scores and macro bias — produces a concrete trade thesis
+    (direction, entry zone, invalidation, targets, conviction). Sonnet, 5-min cache."""
+    from agents.technical_fusion_agent import TechnicalFusionAgent
+    return await TechnicalFusionAgent().run()
+
+
 @router.get("/history/{agent_name}")
 async def get_agent_history(agent_name: str, limit: int = 50):
     sb = get_supabase()
