@@ -57,6 +57,10 @@ export default function ShortScoreWidget({ shortScore }: Props) {
   const live        = shortScore?.data_sources_live ?? []
   const missing     = shortScore?.data_sources_missing ?? []
   const spreadInfo  = shortScore?.spread_info
+  const regimeInfo  = shortScore?.regime_info
+  const posSizing   = shortScore?.position_sizing
+  const interaction = shortScore?.interaction_note
+  const calibration = shortScore?.calibration
 
   const longLeading  = !blocked && longScore  > shortScoreV
   const shortLeading = !blocked && shortScoreV > longScore
@@ -131,10 +135,53 @@ export default function ShortScoreWidget({ shortScore }: Props) {
         background: blocked ? 'rgba(107,114,128,0.15)' : `${netColor}1a`,
         border: `1px solid ${blocked ? 'rgba(107,114,128,0.4)' : `${netColor}55`}`,
         color: netColor,
+        animation: (goLong || goShort) ? 'glowPulse 1.2s ease-in-out infinite' : 'none',
       }}>
         {blocked ? '⛔ ' : netSignal.includes('LONG') ? '▲ ' : netSignal.includes('SHORT') ? '▼ ' : '◆ '}
         {netSignal}
       </div>
+
+      {/* Regime + Position sizing row */}
+      {(regimeInfo || posSizing) && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1 p-2 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="text-[10px] text-[var(--text-label)]">SMOOTHED REGIME</div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-[var(--text-primary)]">
+                {(regimeInfo?.regime ?? 'unknown').replace(/_/g, ' ')}
+              </span>
+              {regimeInfo?.confidence != null && (
+                <span className="text-[10px] text-[var(--text-label)]">{regimeInfo.confidence.toFixed(0)}% conf</span>
+              )}
+              {regimeInfo?.blocked_by_hysteresis && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)' }}>
+                  ⟳ HOLDING
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 p-2 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="text-[10px] text-[var(--text-label)]">POSITION SIZE SUGGESTION</div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-[var(--text-primary)]">
+                {posSizing?.risk_pct != null ? `${posSizing.risk_pct.toFixed(2)}%` : '—'}
+              </span>
+              <span className="text-[10px] text-[var(--text-label)]">{posSizing?.label ?? ''}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interaction note */}
+      {interaction && interaction !== 'none' && !interaction.toLowerCase().startsWith('none') && (
+        <div className="text-[10px] px-2 py-1.5 rounded" style={{
+          background: 'rgba(245,158,11,0.08)',
+          border: '1px solid rgba(245,158,11,0.3)',
+          color: '#f59e0b',
+        }}>
+          ⚡ {interaction}
+        </div>
+      )}
 
       {/* BLOCKED warning banner */}
       {blocked && (
@@ -230,11 +277,16 @@ export default function ShortScoreWidget({ shortScore }: Props) {
         </div>
       </div>
 
-      {shortScore?.timestamp && (
-        <div className="text-[10px] text-[var(--text-muted)] text-right">
-          updated {new Date(shortScore.timestamp).toLocaleTimeString()}
-        </div>
-      )}
+      <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+        <span>
+          {calibration?.status === 'calibrated' && calibration?.calibrated_at
+            ? `Calibrated: ${new Date(calibration.calibrated_at).toLocaleDateString()} · ${calibration.bars_used ?? '—'} bars`
+            : ''}
+        </span>
+        {shortScore?.timestamp && (
+          <span>updated {new Date(shortScore.timestamp).toLocaleTimeString()}</span>
+        )}
+      </div>
     </div>
   )
 }

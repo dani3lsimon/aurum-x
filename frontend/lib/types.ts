@@ -87,6 +87,58 @@ export interface SpreadInfo {
   note: string
 }
 
+export interface RegimeInfo {
+  regime: string
+  confidence: number
+  blocked_by_hysteresis?: boolean
+  method?: string
+  sample_size?: number
+  window_hours?: number
+  challenger?: string | null
+  top_labels?: Record<string, number>
+}
+
+export interface PositionSizing {
+  risk_pct: number
+  risk_usd?: number
+  vix: number | null
+  label?: string
+  note: string
+  account_size?: number
+}
+
+export interface ShortScoreThresholds {
+  high_conviction: number
+  scalp: number
+  vix: number | null
+  note: string
+}
+
+export interface DecayFactors {
+  price?: number
+  delta?: number
+  vwap?: number
+  data_timestamp?: string | null
+  note?: string
+}
+
+export interface RegimeWeightAdjustment {
+  base_weight: number
+  regime_modifier: number
+  decay_applied: number
+  effective_weight: number
+}
+
+export interface CalibrationInfo {
+  status: string
+  bars_used?: number
+  gold_std_1h?: number
+  gold_std_4h?: number
+  significant_dxy_move?: number
+  calibrated_at?: string
+  [key: string]: unknown
+}
+
 export type NetSignal =
   | 'HIGH CONVICTION LONG'
   | 'HIGH CONVICTION SHORT'
@@ -125,6 +177,17 @@ export interface ShortScore {
   data_sources_live: string[]
   data_sources_missing: string[]
   timestamp: string
+
+  // Signal-quality layers
+  decay_factors?: DecayFactors
+  current_regime?: string
+  regime_info?: RegimeInfo
+  regime_weight_adjustments?: Record<string, RegimeWeightAdjustment>
+  interaction_bonus?: number
+  interaction_note?: string
+  thresholds?: ShortScoreThresholds
+  calibration?: CalibrationInfo
+  position_sizing?: PositionSizing
 
   // Backwards-compat aliases (old single-direction shape)
   short_setup_score: number
