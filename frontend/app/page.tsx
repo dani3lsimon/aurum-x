@@ -133,16 +133,16 @@ export default function Page() {
               maximumFractionDigits: 2,
             })}
           </div>
-          {priceChange !== 0 && (
-            <div style={{
-              fontSize: '12px',
-              color: priceChange > 0 ? '#22c55e' : '#ef4444',
-              letterSpacing: '0.08em',
-              marginTop: '2px',
-            }}>
-              {priceChange > 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}
-            </div>
-          )}
+          <div style={{
+            fontSize: '12px',
+            color: priceChange > 0 ? '#22c55e' : priceChange < 0 ? '#ef4444' : 'transparent',
+            letterSpacing: '0.08em',
+            marginTop: '2px',
+            height: '16px',
+            visibility: priceChange !== 0 ? 'visible' : 'hidden',
+          }}>
+            {priceChange > 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}
+          </div>
           {/* Quick-stats strip — always visible regardless of active tab */}
           <div style={{ fontSize: '13px', color: '#6b7494', display: 'flex', gap: '16px', alignItems: 'center', marginTop: '4px' }}>
             <span>BULL <strong style={{ color: '#22c55e' }}>{bull.toFixed(0)}%</strong></span>
