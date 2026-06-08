@@ -21,28 +21,110 @@ export function useForecast() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { isConnected, lastMessage }    = useWebSocket(WS_URL)
 
-  // ── Live gold price — polled directly from OANDA every 5 seconds ──────────
+  // ── Live gold price — direct cTrader broker tick stream (no agent) ────────
+  // Connects straight to the AURUM-X VPS tick bridge (70.156.8.139), which
+  // holds the live cTrader Open API session and re-broadcasts XAUUSD ticks.
+  // Falls back to 5s polling of /market/orderflow (OANDA-backed) if the
+  // bridge WebSocket is unreachable.
   const [liveGoldPrice, setLiveGoldPrice] = useState<number>(0)
   const [priceChange,   setPriceChange]   = useState<number>(0)
+  const [wsStatus,      setWsStatus]      = useState<'connected' | 'disconnected' | 'error'>('disconnected')
   const prevPriceRef = useRef<number>(0)
 
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const r = await fetch(`${BACKEND}/market/orderflow`)
-        const d = await r.json()
-        const p = d.current_price || d.bid || 0
-        if (p > 0) {
-          setPriceChange(p - (prevPriceRef.current || p))
-          prevPriceRef.current = p
-          setLiveGoldPrice(p)
-        }
-      } catch {}
-    }
-    poll()
-    const interval = setInterval(poll, 5000)
-    return () => clearInterval(interval)
+  const applyTick = useCallback((price: number) => {
+    if (!(price > 0)) return
+    setPriceChange(price - (prevPriceRef.current || price))
+    prevPriceRef.current = price
+    setLiveGoldPrice(price)
   }, [])
+
+  useEffect(() => {
+    const bridgeWs    = process.env.NEXT_PUBLIC_CTRADER_WS
+    const bridgeToken = process.env.NEXT_PUBLIC_CTRADER_TOKEN
+
+    // No bridge configured — fall back to polling the backend directly.
+    if (!bridgeWs) {
+      setWsStatus('disconnected')
+      const poll = async () => {
+        try {
+          const r = await fetch(`${BACKEND}/market/orderflow`)
+          const d = await r.json()
+          applyTick(d.current_price || d.bid || 0)
+        } catch {}
+      }
+      poll()
+      const interval = setInterval(poll, 5000)
+      return () => clearInterval(interval)
+    }
+
+    let ws: WebSocket | undefined
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    let fallbackInterval: ReturnType<typeof setInterval> | undefined
+    let cancelled = false
+
+    const startFallbackPolling = () => {
+      if (fallbackInterval) return
+      const poll = async () => {
+        try {
+          const r = await fetch(`${BACKEND}/market/orderflow`)
+          const d = await r.json()
+          applyTick(d.current_price || d.bid || 0)
+        } catch {}
+      }
+      poll()
+      fallbackInterval = setInterval(poll, 5000)
+    }
+
+    const stopFallbackPolling = () => {
+      if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = undefined }
+    }
+
+    const connect = () => {
+      if (cancelled) return
+      try {
+        const url = bridgeToken ? `${bridgeWs}?token=${bridgeToken}` : bridgeWs
+        ws = new WebSocket(url)
+
+        ws.onopen = () => {
+          setWsStatus('connected')
+          stopFallbackPolling()
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data)
+            if (msg.type === 'tick' && msg.data?.mid) {
+              applyTick(msg.data.mid)
+            }
+          } catch {}
+        }
+
+        ws.onclose = () => {
+          if (cancelled) return
+          setWsStatus('disconnected')
+          startFallbackPolling()
+          reconnectTimer = setTimeout(connect, 5000)
+        }
+
+        ws.onerror = () => {
+          setWsStatus('error')
+          ws?.close()
+        }
+      } catch {
+        startFallbackPolling()
+        reconnectTimer = setTimeout(connect, 5000)
+      }
+    }
+
+    connect()
+
+    return () => {
+      cancelled = true
+      ws?.close()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      stopFallbackPolling()
+    }
+  }, [applyTick])
 
   // Fetch OHLCV candles on mount and whenever the chart timeframe changes
   useEffect(() => {
@@ -238,6 +320,6 @@ export function useForecast() {
     forecast, agentScores, scenarios, alerts, releases, shortScore,
     ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     loading, isConnected, isRefreshing, triggerManualCycle,
-    liveGoldPrice, priceChange,
+    liveGoldPrice, priceChange, wsStatus,
   }
 }

@@ -38,7 +38,7 @@ export default function Page() {
     forecast, agentScores, scenarios, alerts, shortScore, loading,
     ohlcvData, setOhlcvData, multiTf, orderFlow, chartTf, setChartTf,
     isConnected, isRefreshing, triggerManualCycle,
-    liveGoldPrice, priceChange,
+    liveGoldPrice, priceChange, wsStatus,
   } = useForecast()
 
   const [toast, setToast]               = useState<string | null>(null)
@@ -198,6 +198,9 @@ export default function Page() {
             <div className={`live-badge ${isConnected ? '' : 'opacity-40'}`}>
               {isConnected ? 'LIVE' : 'OFFLINE'}
             </div>
+            <span style={{ fontSize: '10px', color: wsStatus === 'connected' ? '#22c55e' : '#ef4444', letterSpacing: '0.12em' }}>
+              {wsStatus === 'connected' ? '● CTRADER LIVE' : '○ CTRADER OFFLINE'}
+            </span>
             <div className="text-xs text-[var(--text-muted)]">10 AGENTS</div>
           </div>
         </div>
