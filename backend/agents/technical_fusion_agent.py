@@ -7,10 +7,12 @@
 # agent_scores — this agent returns a bespoke trade-thesis schema instead, so
 # it follows the same direct-Anthropic-call pattern as scenario_engine.py.
 import anthropic
+import httpx
 import json
 import asyncio
 import logging
-from config import get_settings, MODEL_SONNET, MAX_TOKENS_SONNET, estimate_cost
+from config import (get_settings, MODEL_SONNET, MAX_TOKENS_SONNET, estimate_cost,
+                    DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_HEAVY, estimate_deepseek_cost)
 from services.redis_service import cache_get, cache_set
 
 logger = logging.getLogger(__name__)
@@ -138,6 +140,73 @@ Produce ONLY this JSON (no markdown):
 
 Rules: every price level must come from the SMC data. If SMC and fundamentals conflict, say so and lower probability. If net_confluence is between -1 and +1, default to NO_TRADE. If Kronos is UNPROVEN, treat its direction as a very weak tiebreaker only, not a primary signal. If TRUSTED (≥55% hit rate, n≥20), give it meaningful weight alongside the SMC structure. Score your own confidence honestly."""
 
+    async def _call_anthropic(self, prompt: str) -> tuple[dict, str]:
+        """Call Claude Sonnet. Returns (result_dict, provider_label)."""
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.messages.create(
+                model=self.model,
+                max_tokens=MAX_TOKENS_SONNET,
+                system="You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble.",
+                messages=[{"role": "user", "content": prompt}]
+            )
+        )
+        in_tok  = response.usage.input_tokens
+        out_tok = response.usage.output_tokens
+        cost    = estimate_cost(self.model, in_tok, out_tok)
+        raw     = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"): raw = raw[4:]
+            raw = raw.strip()
+        result = json.loads(raw)
+        logger.info(
+            f"[technical_fusion/anthropic] {result.get('direction')} | "
+            f"quality={result.get('setup_quality')} | prob={result.get('probability')}% | "
+            f"in={in_tok} out={out_tok} cost=${cost:.5f}"
+        )
+        return result, "claude_sonnet"
+
+    async def _call_deepseek(self, prompt: str) -> tuple[dict, str]:
+        """DeepSeek fallback via OpenAI-compatible API."""
+        settings = get_settings()
+        if not settings.deepseek_api_key:
+            raise ValueError("DEEPSEEK_API_KEY not set")
+        payload = {
+            "model":      DEEPSEEK_MODEL_HEAVY,
+            "max_tokens": MAX_TOKENS_SONNET,
+            "messages": [
+                {"role": "system", "content": "You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble."},
+                {"role": "user",   "content": prompt},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.deepseek_api_key}",
+            "Content-Type":  "application/json",
+        }
+        async with httpx.AsyncClient(timeout=60) as http:
+            resp = await http.post(f"{DEEPSEEK_BASE_URL}/chat/completions",
+                                   json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        raw = data["choices"][0]["message"]["content"].strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"): raw = raw[4:]
+            raw = raw.strip()
+        usage   = data.get("usage", {})
+        in_tok  = usage.get("prompt_tokens", 0)
+        out_tok = usage.get("completion_tokens", 0)
+        cost    = estimate_deepseek_cost(DEEPSEEK_MODEL_HEAVY, in_tok, out_tok)
+        result  = json.loads(raw)
+        logger.info(
+            f"[technical_fusion/deepseek] {result.get('direction')} | "
+            f"quality={result.get('setup_quality')} | prob={result.get('probability')}% | "
+            f"in={in_tok} out={out_tok} cost=${cost:.5f}"
+        )
+        return result, "deepseek_fallback"
+
     async def run(self) -> dict:
         cached = await cache_get(CACHE_KEY)
         if cached:
@@ -146,42 +215,30 @@ Rules: every price level must come from the SMC data. If SMC and fundamentals co
         try:
             data   = await self.collect_data()
             prompt = self.build_prompt(data)
-
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: client.messages.create(
-                    model=self.model,
-                    max_tokens=MAX_TOKENS_SONNET,
-                    system="You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble.",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-            )
-            in_tok  = response.usage.input_tokens
-            out_tok = response.usage.output_tokens
-            cost    = estimate_cost(self.model, in_tok, out_tok)
-
-            raw = response.content[0].text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-                raw = raw.strip()
-            result = json.loads(raw)
-            from datetime import datetime, timezone
-            result["generated_at"] = datetime.now(timezone.utc).isoformat()
-            result["cache_ttl_s"]  = self.cache_ttl
-
-            logger.info(
-                f"[technical_fusion] {result.get('direction')} | "
-                f"quality={result.get('setup_quality')} | prob={result.get('probability')}% | "
-                f"tokens in={in_tok} out={out_tok} estimated_cost=${cost:.5f}"
-            )
-
-            await cache_set(CACHE_KEY, result, ttl_seconds=self.cache_ttl)
-            return result
-
         except Exception as e:
-            logger.error(f"[technical_fusion] error: {e}")
+            logger.error(f"[technical_fusion] data collection error: {e}")
             return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
-                    "reasoning": f"Fusion agent error: {e}", "error": str(e)}
+                    "reasoning": f"Data collection error: {e}", "error": str(e)}
+
+        result   = None
+        provider = None
+
+        # Try Anthropic first, fall back to DeepSeek on any error
+        try:
+            result, provider = await self._call_anthropic(prompt)
+        except Exception as anthropic_err:
+            logger.warning(f"[technical_fusion] Anthropic failed ({anthropic_err}) — retrying with DeepSeek")
+            try:
+                result, provider = await self._call_deepseek(prompt)
+            except Exception as ds_err:
+                logger.error(f"[technical_fusion] Both providers failed. Anthropic: {anthropic_err} | DeepSeek: {ds_err}")
+                return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
+                        "reasoning": f"Both providers failed: {ds_err}", "error": str(ds_err)}
+
+        from datetime import datetime, timezone
+        result["generated_at"] = datetime.now(timezone.utc).isoformat()
+        result["cache_ttl_s"]  = self.cache_ttl
+        result["provider"]     = provider
+
+        await cache_set(CACHE_KEY, result, ttl_seconds=self.cache_ttl)
+        return result
