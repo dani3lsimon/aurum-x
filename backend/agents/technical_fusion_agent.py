@@ -169,15 +169,20 @@ Rules: every price level must come from the SMC data. If SMC and fundamentals co
         return result, "claude_sonnet"
 
     async def _call_deepseek(self, prompt: str) -> tuple[dict, str]:
-        """DeepSeek fallback via OpenAI-compatible API."""
+        """DeepSeek fallback via OpenAI-compatible API.
+        Uses deepseek-chat (not reasoner) — chat returns clean JSON content;
+        reasoner puts its answer in reasoning_content and may leave content empty.
+        """
         settings = get_settings()
         if not settings.deepseek_api_key:
             raise ValueError("DEEPSEEK_API_KEY not set")
+
+        DS_MODEL = "deepseek-chat"   # V3 — fast, JSON-reliable, no think-tag issues
         payload = {
-            "model":      DEEPSEEK_MODEL_HEAVY,
-            "max_tokens": MAX_TOKENS_SONNET,
+            "model":      DS_MODEL,
+            "max_tokens": 1200,      # larger budget — fusion JSON is ~600-800 tokens
             "messages": [
-                {"role": "system", "content": "You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble."},
+                {"role": "system", "content": "You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble, no explanation before or after the JSON."},
                 {"role": "user",   "content": prompt},
             ],
         }
@@ -190,22 +195,37 @@ Rules: every price level must come from the SMC data. If SMC and fundamentals co
                                    json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
-        raw = data["choices"][0]["message"]["content"].strip()
+
+        msg = data["choices"][0]["message"]
+        # deepseek-chat puts answer in content; reasoner may put it in reasoning_content
+        raw = (msg.get("content") or msg.get("reasoning_content") or "").strip()
+
+        if not raw:
+            raise ValueError(f"DeepSeek returned empty content. Full response: {json.dumps(data)[:500]}")
+
+        # Strip any markdown fences
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"): raw = raw[4:]
             raw = raw.strip()
+
+        # Strip any leading/trailing non-JSON text (find first '{' and last '}')
+        start = raw.find("{")
+        end   = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            raw = raw[start:end]
+
         usage   = data.get("usage", {})
         in_tok  = usage.get("prompt_tokens", 0)
         out_tok = usage.get("completion_tokens", 0)
-        cost    = estimate_deepseek_cost(DEEPSEEK_MODEL_HEAVY, in_tok, out_tok)
+        cost    = estimate_deepseek_cost(DS_MODEL, in_tok, out_tok)
         result  = json.loads(raw)
         logger.info(
-            f"[technical_fusion/deepseek] {result.get('direction')} | "
+            f"[technical_fusion/deepseek-chat] {result.get('direction')} | "
             f"quality={result.get('setup_quality')} | prob={result.get('probability')}% | "
             f"in={in_tok} out={out_tok} cost=${cost:.5f}"
         )
-        return result, "deepseek_fallback"
+        return result, "deepseek_chat"
 
     async def run(self) -> dict:
         cached = await cache_get(CACHE_KEY)
