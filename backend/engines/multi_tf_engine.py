@@ -42,7 +42,7 @@ CONDITION_WEIGHTS = {
 # 5-minute cycle (macro/fundamental data). Surfaced honestly to the frontend
 # so it can label which numbers are "live" vs "cached" rather than implying
 # everything updates in real time.
-PRICE_SENSITIVE = {"vwap", "break", "delta"}
+PRICE_SENSITIVE = {"vwap", "break", "delta", "dxy", "yield"}
 
 TF_OANDA_MAP = {
     "15min": {"granularity": "M15", "count": 16},
@@ -146,21 +146,21 @@ def score_one_timeframe(tf_data: dict, shared: dict, cot_decay: float, etf_decay
     long_raw  = 0.0
     conditions = {}
 
-    # DXY direction
+    # DXY direction — live OANDA EUR_USD proxy (USD = inverse of EUR)
     dxy_mom = shared.get("dxy_momentum_pct", 0)
     c_dxy_s = dxy_mom > 0.10
     c_dxy_l = dxy_mom < -0.10
     conditions["dxy"] = {"short_met": c_dxy_s, "long_met": c_dxy_l,
-                         "value": f"DXY {dxy_mom:+.3f}%"}
+                         "value": f"EUR/USD→DXY {dxy_mom:+.3f}% (OANDA live)"}
     if c_dxy_s: short_raw += CONDITION_WEIGHTS["dxy"]
     if c_dxy_l: long_raw  += CONDITION_WEIGHTS["dxy"]
 
-    # Real yield direction (yield_agent score proxy)
+    # Yield direction — live OANDA USB10Y_USD bond futures (price↑ = yield↓ = gold bullish)
     yield_score = shared.get("yield_agent_score", 0)
     c_yld_s = yield_score < -10
     c_yld_l = yield_score > 10
     conditions["yield"] = {"short_met": c_yld_s, "long_met": c_yld_l,
-                           "value": f"Yield agent {yield_score:+.0f}"}
+                           "value": f"USB10Y futures {yield_score:+.1f} (OANDA live)"}
     if c_yld_s: short_raw += CONDITION_WEIGHTS["yield"]
     if c_yld_l: long_raw  += CONDITION_WEIGHTS["yield"]
 
@@ -328,15 +328,54 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
     cot_decay = decay_factor("cot", 48)
     etf_decay = decay_factor("etf", 16)
 
-    # Real DXY momentum from FRED (via MacroCollector — same source as the main engine)
-    dxy_momentum = float((dollar_data or {}).get("DXY_MOMENTUM_PCT", 0) or 0)
+    # ── Live DXY momentum from OANDA EUR_USD ────────────────────────────
+    # FRED DTWEXBGS is daily with T+1 lag — not useful intraday.
+    # EUR/USD is the dominant DXY component (~58% weight) and is live on
+    # OANDA. USD momentum = inverse of EUR momentum.
+    dxy_momentum = 0.0
+    dxy_source   = "neutral fallback"
+    try:
+        from collectors.oanda_collector import OandaCollector
+        eur_candles = await OandaCollector().get_candles("EUR_USD", "H1", 6)
+        completed   = [c for c in eur_candles if c.get("complete", True)]
+        if len(completed) >= 2:
+            eur_now  = float(completed[-1]["close"])
+            eur_prev = float(completed[0]["close"])
+            eur_chg  = (eur_now - eur_prev) / eur_prev * 100
+            dxy_momentum = round(-eur_chg, 4)   # USD is inverse of EUR
+            dxy_source   = f"OANDA EUR_USD H1 ×6 (EUR {eur_chg:+.4f}% → DXY {dxy_momentum:+.4f}%)"
+    except Exception as e:
+        logger.warning(f"Live DXY momentum (EUR_USD) failed: {e}")
+        # Fall back to FRED if OANDA fails
+        dxy_momentum = float((dollar_data or {}).get("DXY_MOMENTUM_PCT", 0) or 0)
+        dxy_source   = "FRED DTWEXBGS fallback"
+    logger.debug(f"DXY momentum: {dxy_momentum:+.4f}% [{dxy_source}]")
 
-    # yield_agent score from the latest agent run
+    # ── Live yield direction from OANDA USB10Y_USD bond futures ─────────
+    # Bond futures price is INVERSE to yield: price UP = yields DOWN = gold bullish.
+    # Threshold: ±0.05% intraday move on the futures price is significant.
     yield_agent_score = 0.0
-    for s in (agent_scores or []):
-        if s.get("agent_name") == "yield_agent":
-            yield_agent_score = float(s.get("score", 0))
-            break
+    yield_source      = "neutral fallback"
+    try:
+        bond_candles = await OandaCollector().get_candles("USB10Y_USD", "H1", 6)
+        b_completed  = [c for c in bond_candles if c.get("complete", True)]
+        if len(b_completed) >= 2:
+            b_now  = float(b_completed[-1]["close"])
+            b_prev = float(b_completed[0]["close"])
+            b_chg  = (b_now - b_prev) / b_prev * 100
+            # Bond price up → yields falling → bullish gold → positive score
+            # Scale to the ±10 threshold used in score_one_timeframe
+            yield_agent_score = round(b_chg * 200, 2)   # ±0.05% move → ±10 score
+            yield_source      = f"OANDA USB10Y_USD H1 ×6 (price {b_chg:+.4f}% → score {yield_agent_score:+.1f})"
+    except Exception as e:
+        logger.warning(f"Live yield (USB10Y_USD) failed: {e}")
+        # Fall back to yield_agent score from DB
+        for s in (agent_scores or []):
+            if s.get("agent_name") == "yield_agent":
+                yield_agent_score = float(s.get("score", 0))
+                yield_source      = "yield_agent DB fallback"
+                break
+    logger.debug(f"Yield score: {yield_agent_score:+.2f} [{yield_source}]")
 
     # No-imminent-news check — reuse the main engine's honest evaluator
     from engines.short_score_engine import ShortScoreEngine
