@@ -49,7 +49,7 @@ class TechnicalFusionAgent:
         # Fetch OANDA candles for Kronos (each TF in parallel; empty list on failure)
         oanda = OandaCollector()
         candles_by_tf = {}
-        for tf, gran, count in [('15min', 'M15', 400), ('1h', 'H1', 400), ('4h', 'H4', 200)]:
+        for tf, gran, count in [('15min', 'M15', 200), ('1h', 'H1', 200), ('4h', 'H4', 100)]:
             try:
                 raw = await oanda.get_candles('XAU_USD', gran, count)
                 candles_by_tf[tf] = [
