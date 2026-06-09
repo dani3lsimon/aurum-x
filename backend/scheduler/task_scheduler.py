@@ -87,6 +87,11 @@ class AurumScheduler:
         self.scheduler.add_job(self._run_multi_tf, IntervalTrigger(minutes=5),
                                id="multi_tf", replace_existing=True)
 
+        # Technical Fusion Agent — pre-compute every 5 min so users never wait
+        # for the AI call. Cache is 60s; scheduler keeps it warm.
+        self.scheduler.add_job(self._run_technical_fusion, IntervalTrigger(minutes=5),
+                               id="technical_fusion", replace_existing=True)
+
         # SMC change monitor — every 30 seconds, zero cost (just diffs cached results)
         self.scheduler.add_job(self._run_smc_monitor, IntervalTrigger(seconds=30),
                                id="smc_monitor", replace_existing=True)
@@ -356,6 +361,18 @@ class AurumScheduler:
             await check_pending_predictions()
         except Exception as e:
             logger.error(f"Kronos accuracy check error: {e}")
+
+    async def _run_technical_fusion(self):
+        """Pre-compute the Technical Fusion thesis every 5 min so the cache is
+        always warm — users never stare at a loading state waiting for AI."""
+        try:
+            from services.redis_service import cache_delete
+            from agents.technical_fusion_agent import TechnicalFusionAgent
+            # Force a fresh run by busting the cache first
+            await cache_delete("technical_fusion_signal")
+            await TechnicalFusionAgent().run()
+        except Exception as e:
+            logger.error(f"Technical fusion scheduler error: {e}")
 
     async def _run_fmp_calendar_sync(self):
         try:

@@ -265,13 +265,30 @@ def score_timeframe(patterns: List[Dict], structure: Dict) -> float:
 async def _candles_to_df(granularity: str, count: int) -> Tuple[pd.DataFrame, list]:
     oanda   = OandaCollector()
     candles = await oanda.get_candles("XAU_USD", granularity, count)
+
+    # Split completed vs current open candle
     completed = [c for c in candles if c.get("complete", True)]
+    open_bar  = next((c for c in candles if c.get("complete") is False), None)
+
     if len(completed) < 60:
         return pd.DataFrame(), []
-    df = pd.DataFrame([{"open": float(c["open"]), "high": float(c["high"]),
-                        "low": float(c["low"]), "close": float(c["close"]),
-                        "volume": int(c["volume"])} for c in completed])
-    return df, completed
+
+    rows = [{"open": float(c["open"]), "high": float(c["high"]),
+             "low": float(c["low"]), "close": float(c["close"]),
+             "volume": int(c["volume"])} for c in completed]
+
+    # Append the current open candle so SMC analysis includes live price action.
+    # The structure engine uses df["close"].iloc[-1] as current price — this
+    # ensures BOS/ChoCH/liquidity reads are based on NOW, not up to 15min ago.
+    if open_bar:
+        rows.append({"open":   float(open_bar["open"]),
+                     "high":   float(open_bar["high"]),
+                     "low":    float(open_bar["low"]),
+                     "close":  float(open_bar["close"]),
+                     "volume": int(open_bar.get("volume", 0))})
+
+    df = pd.DataFrame(rows)
+    return df, completed + ([open_bar] if open_bar else [])
 
 
 async def analyze_timeframe(tf: str) -> Dict:
@@ -338,6 +355,6 @@ async def analyze_all() -> Dict:
     result["alignment"]      = alignment
     from datetime import datetime, timezone
     result["fetched_at"]     = datetime.now(timezone.utc).isoformat()
-    result["cache_ttl_s"]    = 30
-    await cache_set(cache_key, result, ttl_seconds=30)
+    result["cache_ttl_s"]    = 15
+    await cache_set(cache_key, result, ttl_seconds=15)
     return result
