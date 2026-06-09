@@ -4,6 +4,7 @@ import UpdateBadge from './UpdateBadge'
 
 const BACKEND    = process.env.NEXT_PUBLIC_BACKEND_URL || ''
 const REFRESH_MS = 30_000   // 30s — backend SMC cache is 30s
+const KRONOS_REFRESH_MS = 300_000  // 5 min — matches Kronos cache TTL
 
 const DIR_COLOR: Record<string, string> = {
   bullish: '#22c55e',
@@ -79,6 +80,8 @@ function fmtTime(iso: string | null | undefined): string {
 export default function TechnicalPanel() {
   const [smc, setSmc]                   = useState<any>(null)
   const [fusion, setFusion]             = useState<any>(null)
+  const [kronos, setKronos]             = useState<any>(null)
+  const [kronosAccuracy, setKronosAccuracy] = useState<any>(null)
   const [loading, setLoading]           = useState(true)
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null)
   const [changeAlert, setChangeAlert]   = useState<any[] | null>(null)
@@ -97,9 +100,26 @@ export default function TechnicalPanel() {
     setLoading(false)
   }
 
+  const fetchKronos = async () => {
+    try {
+      const [k, acc] = await Promise.all([
+        fetch(`${BACKEND}/forecast/kronos/latest`).then(r => r.json()),
+        fetch(`${BACKEND}/forecast/kronos/accuracy`).then(r => r.json()),
+      ])
+      setKronos(k)
+      setKronosAccuracy(acc)
+    } catch {}
+  }
+
   useEffect(() => {
     fetchData()
     const interval = setInterval(fetchData, REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    fetchKronos()
+    const interval = setInterval(fetchKronos, KRONOS_REFRESH_MS)
     return () => clearInterval(interval)
   }, [])
 
@@ -193,7 +213,7 @@ export default function TechnicalPanel() {
 
       {/* SMC server-side timestamp */}
       {smc?.fetched_at && (
-        <div style={{ fontSize: '9px', color: '#2a2d3a', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace', marginTop: '-8px' }}>
+        <div style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace', marginTop: '-8px' }}>
           SERVER COMPUTED {fmtTime(smc.fetched_at)} UTC · CACHE {smc.cache_ttl_s ?? 30}s
         </div>
       )}
@@ -260,8 +280,15 @@ export default function TechnicalPanel() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.14em', color: '#ff7744' }}>⚡ FUSION THESIS</span>
               {fusion.generated_at && (
-                <span style={{ fontSize: '9px', color: '#2a2d3a', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace' }}>
-                  CLAUDE SONNET · GENERATED {fmtTime(fusion.generated_at)} UTC · CACHE {fusion.cache_ttl_s ?? 60}s
+                <span style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {fusion.provider === 'deepseek_chat' ? 'DEEPSEEK' : 'CLAUDE SONNET'} · GENERATED {fmtTime(fusion.generated_at)} UTC · NEXT ~5MIN
+                </span>
+              )}
+              {fusion.live_price_used && (
+                <span style={{ fontSize: '9px', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace',
+                  color: '#22c55e', background: 'rgba(34,197,94,0.08)', padding: '1px 6px',
+                  border: '1px solid rgba(34,197,94,0.25)', borderRadius: '2px', display: 'inline-block', marginTop: '1px' }}>
+                  ◎ ANCHORED TO LIVE ${fusion.live_price_used.toFixed(2)} [{(fusion.live_price_src || 'oanda').toUpperCase()}]
                 </span>
               )}
             </div>
@@ -323,6 +350,16 @@ export default function TechnicalPanel() {
               <span style={{ color: '#4a5068' }}>RISK: </span>{fusion.risk_note}
             </div>
           )}
+          {fusion.entry_error && (
+            <div style={{ fontSize: '9px', color: '#ef4444', letterSpacing: '0.08em', padding: '4px 8px', background: 'rgba(239,68,68,0.10)', borderRadius: '2px', border: '1px solid rgba(239,68,68,0.3)' }}>
+              ⛔ {fusion.entry_error}
+            </div>
+          )}
+          {fusion.target_error && (
+            <div style={{ fontSize: '9px', color: '#ef4444', letterSpacing: '0.08em', padding: '4px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: '2px', border: '1px solid rgba(239,68,68,0.2)' }}>
+              ⚠ {fusion.target_error} — targets will refresh next cycle
+            </div>
+          )}
         </div>
       )}
       {fusion?.error && (
@@ -330,6 +367,89 @@ export default function TechnicalPanel() {
           FUSION THESIS UNAVAILABLE — {fusion.error}
         </div>
       )}
+      </div>
+
+      {/* ── Kronos-mini probabilistic forecast panel ────────────────────── */}
+      <KronosSection kronos={kronos} accuracy={kronosAccuracy} />
+
+    </div>
+  )
+}
+
+// ── Kronos sub-component ─────────────────────────────────────────────────────
+
+function KronosSection({ kronos, accuracy }: { kronos: any; accuracy: any }) {
+  const TF_ORDER = ['15min', '1h', '4h'] as const
+
+  const allOffline = !kronos || TF_ORDER.every(tf => !kronos[tf]?.available)
+
+  const accBadge = (tf: string) => {
+    const a = accuracy?.[tf]
+    if (!a || a.n === 0) return { label: 'UNPROVEN (no data)', color: '#4a5068' }
+    if (a.trusted)       return { label: `TRUSTED ${a.hit_rate}% (n=${a.n})`, color: '#22c55e' }
+    return { label: `UNPROVEN ${a.hit_rate ?? '?'}% (n=${a.n})`, color: '#ffb347' }
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {/* Greyed overlay when all offline */}
+      {allOffline && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 2,
+          background: 'rgba(10,12,20,0.72)', borderRadius: '2px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.14em' }}>
+            KRONOS OFFLINE — SET KRONOS_SERVICE_URL TO ENABLE
+          </span>
+        </div>
+      )}
+
+      <div style={{ padding: '12px', border: '1px solid rgba(96,165,250,0.14)', borderRadius: '2px', background: 'rgba(96,165,250,0.02)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.14em', color: '#60a5fa' }}>
+          ◈ KRONOS-MINI PROBABILISTIC FORECAST
+        </div>
+        <div style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace', marginTop: '-4px' }}>
+          TIME-SERIES MODEL · MEASURED SECOND OPINION · TRUST GROWS WITH SAMPLE SIZE
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+          {TF_ORDER.map(tf => {
+            const fc  = kronos?.[tf]
+            const avail = fc?.available === true
+            const badge = accBadge(tf)
+            const dirColor = fc?.direction === 'bullish' ? '#22c55e' : fc?.direction === 'bearish' ? '#ef4444' : '#6b7494'
+
+            return (
+              <div key={tf} style={{ padding: '10px', border: '1px solid rgba(96,165,250,0.1)', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '4px', opacity: avail ? 1 : 0.35 }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#60a5fa', letterSpacing: '0.08em' }}>{tf.toUpperCase()}</div>
+
+                {avail ? (
+                  <>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: dirColor }}>
+                      {fc.direction === 'bullish' ? '▲' : '▼'} {fc.direction?.toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#ff7744', fontWeight: 700 }}>
+                      {fc.expected_move_pts > 0 ? '+' : ''}{fc.expected_move_pts} pts
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#6b7494' }}>
+                      → {fc.predicted_close}
+                    </div>
+                    <div style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.06em' }}>
+                      range {fc.predicted_low}–{fc.predicted_high}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: '10px', color: '#4a5068' }}>offline</div>
+                )}
+
+                <div style={{ fontSize: '8px', color: badge.color, letterSpacing: '0.06em', marginTop: '2px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '4px' }}>
+                  {badge.label}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

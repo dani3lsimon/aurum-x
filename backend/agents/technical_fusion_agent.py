@@ -23,6 +23,53 @@ CACHE_KEY = "technical_fusion_signal"
 CACHE_TTL = 60   # 1 min — fresh enough for live trading
 
 
+def _validate_entry_zone(result: dict, live_price: float) -> dict:
+    """
+    Reject any trade recommendation whose entry zone is unreachably far from the
+    current live price — this catches hallucinated / stale levels.
+
+    Tolerance: entry midpoint must be within 1.5 % of live_price.
+    If it falls outside that band, the thesis is zeroed out as unreliable.
+    """
+    if not live_price or live_price <= 0:
+        return result
+    direction = result.get("direction", "NEUTRAL")
+    if direction == "NEUTRAL":
+        return result
+
+    entry_zone = str(result.get("entry_zone", ""))
+    try:
+        parts = [
+            float(p.replace(",", "").strip())
+            for p in entry_zone.replace("$", "").split("-")
+            if p.strip()
+        ]
+        if not parts:
+            return result
+        entry_lo  = min(parts)
+        entry_hi  = max(parts)
+        entry_mid = (entry_lo + entry_hi) / 2
+    except Exception:
+        return result
+
+    pct_away = abs(entry_mid - live_price) / live_price * 100
+    MAX_PCT  = 1.5  # beyond 1.5 % = stale / hallucinated entry
+
+    if pct_away > MAX_PCT:
+        logger.warning(
+            f"[fusion_validate] Entry zone {entry_zone} is {pct_away:.2f}% from live "
+            f"price ${live_price:.2f} (max {MAX_PCT}%) — nullifying trade"
+        )
+        result["direction"]    = "NEUTRAL"
+        result["setup_quality"] = "NO_TRADE"
+        result["probability"]  = 0
+        result["entry_error"]  = (
+            f"Entry zone {entry_zone} is {pct_away:.1f}% away from live price "
+            f"${live_price:.2f} — rejected (possible hallucination)"
+        )
+    return result
+
+
 def _validate_targets(result: dict) -> dict:
     """
     Sanity-check that targets are on the correct side of the entry zone.
@@ -79,12 +126,38 @@ class TechnicalFusionAgent:
 
     async def collect_data(self) -> dict:
         import asyncio
+        from datetime import datetime, timezone
         from engines.patterns_engine import analyze_all
         from engines.macro_bias import get_macro_bias
         from services.supabase_service import get_latest_agent_scores, get_latest_forecast
         from services.kronos_client import get_kronos_all_timeframes
         from services.kronos_tracker import get_accuracy_stats, log_forecast
         from collectors.oanda_collector import OandaCollector
+
+        oanda = OandaCollector()
+
+        # ── Step 1: Grab the live gold price BEFORE anything else ─────────────
+        # Priority: cTrader Redis (most live) → OANDA REST (30s cache) → SMC close
+        live_price      = None
+        live_price_src  = "unknown"
+        try:
+            ct_data = await cache_get("live_xauusd_price")
+            if ct_data:
+                raw_p = ct_data.get("price") or ct_data.get("bid") or ct_data.get("mid")
+                if raw_p and float(raw_p) > 500:
+                    live_price     = round(float(raw_p), 2)
+                    live_price_src = "cTrader"
+        except Exception:
+            pass
+
+        if not live_price:
+            try:
+                oanda_price = await oanda.get_gold_price()
+                if oanda_price.get("price", 0) > 500:
+                    live_price     = oanda_price["price"]
+                    live_price_src = "OANDA"
+            except Exception:
+                pass
 
         smc, agents, forecast, mbs, accuracy = await asyncio.gather(
             analyze_all(),
@@ -94,8 +167,18 @@ class TechnicalFusionAgent:
             get_accuracy_stats(),
         )
 
-        # Fetch OANDA candles for Kronos (each TF in parallel; empty list on failure)
-        oanda = OandaCollector()
+        # Final fallback: use current_price from the SMC engine (open candle close)
+        if not live_price:
+            try:
+                live_price     = float(smc.get("15min", {}).get("current_price", 0) or 0) or None
+                live_price_src = "smc_open_candle"
+            except Exception:
+                pass
+
+        live_price_ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        logger.info(f"[technical_fusion] live_price=${live_price} src={live_price_src} ts={live_price_ts}")
+
+        # ── Fetch OANDA candles for Kronos (each TF in parallel) ─────────────
         candles_by_tf = {}
         for tf, gran, count in [('15min', 'M15', 200), ('1h', 'H1', 200), ('4h', 'H4', 100)]:
             try:
@@ -126,9 +209,31 @@ class TechnicalFusionAgent:
             "fundamentals":    fundamentals,
             "mbs":             mbs,
             "regime":          forecast.get("macro_regime") if forecast else "unknown",
+            "live_price":      live_price,
+            "live_price_src":  live_price_src,
+            "live_price_ts":   live_price_ts,
         }
 
     def build_prompt(self, data: dict) -> str:
+        live_price = data.get("live_price")
+        live_src   = data.get("live_price_src", "unknown")
+        live_ts    = data.get("live_price_ts", "")
+
+        if live_price:
+            price_header = (
+                f"══════════════════════════════════════════\n"
+                f"  CURRENT LIVE GOLD PRICE: ${live_price:.2f}\n"
+                f"  Source: {live_src}  |  Fetched: {live_ts}\n"
+                f"  THIS IS THE GROUND TRUTH — every level in your JSON\n"
+                f"  MUST make directional sense relative to ${live_price:.2f}.\n"
+                f"══════════════════════════════════════════"
+            )
+        else:
+            price_header = (
+                "⚠ LIVE PRICE UNAVAILABLE — use SMC current_price as reference.\n"
+                "  Be extra conservative; set setup_quality to WEAK at best."
+            )
+
         # Build Kronos section dynamically
         kronos_lines = []
         for tf, fc in (data.get('kronos') or {}).items():
@@ -154,7 +259,21 @@ class TechnicalFusionAgent:
         else:
             kronos_section = "KRONOS: offline — disregard this section"
 
-        return f"""You are a senior gold (XAUUSD) trader fusing Smart Money Concepts price-action with macro fundamentals.
+        price_rules = ""
+        if live_price:
+            price_rules = (
+                f"- LIVE PRICE ANCHOR: The current gold price is ${live_price:.2f}. "
+                f"Your entry_zone MUST be within 1.5% of this price (i.e. roughly "
+                f"${live_price * 0.985:.2f}–${live_price * 1.015:.2f}). "
+                f"If no SMC level falls in that band, return NEUTRAL / NO_TRADE.\n"
+                f"- For LONG: entry_zone lower bound must be ≤ ${live_price:.2f} or price must be approaching it from below.\n"
+                f"- For SHORT: entry_zone upper bound must be ≥ ${live_price:.2f} or price must be approaching it from above.\n"
+                f"- NEVER place an entry zone 30+ points away from ${live_price:.2f} unless an explicit SMC level is shown at that price in the data.\n"
+            )
+
+        return f"""{price_header}
+
+You are a senior gold (XAUUSD) trader fusing Smart Money Concepts price-action with macro fundamentals.
 
 The SMC data below is from a deterministic engine — TRUST the patterns and price levels, do not recalculate.
 
@@ -185,12 +304,13 @@ Produce ONLY this JSON (no markdown):
 }}
 
 Rules:
-- Every price level must come from the SMC data.
+{price_rules}- Every price level must come from the SMC data provided above — never invent levels.
+- If you are not certain a level exists in the SMC data, omit it (set that field to null) rather than estimate.
 - CRITICAL: For SHORT trades, first_target and second_target MUST be BELOW the entry_zone lower bound. For LONG trades, targets MUST be ABOVE the entry_zone upper bound. A target on the wrong side of entry is never valid.
 - If SMC and fundamentals conflict, say so and lower probability.
 - If net_confluence is between -1 and +1, default to NO_TRADE.
 - If Kronos is UNPROVEN, treat its direction as a very weak tiebreaker only, not a primary signal. If TRUSTED (≥55% hit rate, n≥20), give it meaningful weight alongside the SMC structure.
-- Score your own confidence honestly."""
+- Score your own confidence honestly. When in doubt, return NO_TRADE with a clear reasoning — do not hallucinate a setup."""
 
     async def _call_anthropic(self, prompt: str) -> tuple[dict, str]:
         """Call Claude Sonnet. Returns (result_dict, provider_label)."""
@@ -292,8 +412,9 @@ Rules:
             return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
                     "reasoning": f"Data collection error: {e}", "error": str(e)}
 
-        result   = None
-        provider = None
+        live_price = data.get("live_price")
+        result     = None
+        provider   = None
 
         # Try Anthropic first, fall back to DeepSeek on any error
         try:
@@ -307,13 +428,18 @@ Rules:
                 return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
                         "reasoning": f"Both providers failed: {ds_err}", "error": str(ds_err)}
 
-        # ── Sanity check: targets must be on the correct side of entry ──────────
+        # ── Sanity checks ─────────────────────────────────────────────────────
+        # 1. Entry zone must be near the live price (catches stale / hallucinated entries)
+        result = _validate_entry_zone(result, live_price)
+        # 2. Targets must be on the correct side of entry
         result = _validate_targets(result)
 
         from datetime import datetime, timezone
-        result["generated_at"] = datetime.now(timezone.utc).isoformat()
-        result["cache_ttl_s"]  = self.cache_ttl
-        result["provider"]     = provider
+        result["generated_at"]   = datetime.now(timezone.utc).isoformat()
+        result["cache_ttl_s"]    = self.cache_ttl
+        result["provider"]       = provider
+        result["live_price_used"] = live_price        # expose for UI transparency
+        result["live_price_src"]  = data.get("live_price_src")
 
         await cache_set(CACHE_KEY, result, ttl_seconds=self.cache_ttl)
         return result
