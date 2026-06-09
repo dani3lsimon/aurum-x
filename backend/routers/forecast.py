@@ -242,6 +242,96 @@ async def get_signal_stats():
     return await get_performance_stats()
 
 
+@router.post("/signal-history/backfill-r")
+async def backfill_realized_r():
+    """
+    One-shot migration: back-fill realized_r, outcome_class, and portions_closed
+    for all closed signals that were recorded before the R-multiple journal was
+    introduced (i.e. rows where realized_r IS NULL).
+
+    Derivation logic (mirrors _check_and_update_signal):
+      - TP3 hit                         → realized_r = 0.50*1 + 0.25*2 + 0.25*3 = 1.625 → WIN
+      - TP2 hit, stopped/expired after  → realized_r = 0.50*1 + 0.25*2 = 1.00          → WIN
+      - TP1 hit, stopped at BE after    → realized_r = 0.50*1 = 0.50                    → WIN
+      - Stopped with no TP              → realized_r = -1.0                             → LOSS
+      - EXPIRED_PROFIT (no TPs tracked) → realized_r = +0.50 (estimate: TP1-equivalent) → WIN
+      - EXPIRED_LOSS                    → realized_r = -1.0                             → LOSS
+    """
+    sb = get_supabase()
+
+    # Fetch all closed rows missing realized_r
+    rows = sb.table("signal_history") \
+        .select("id, tp1_hit, tp2_hit, tp3_hit, result_label, status, risk_distance, risk_usd, stop_loss, entry_price") \
+        .neq("status", "OPEN") \
+        .is_("realized_r", "null") \
+        .execute().data or []
+
+    if not rows:
+        return {"updated": 0, "message": "Nothing to backfill — all closed rows already have realized_r."}
+
+    updated = 0
+    errors  = 0
+    for row in rows:
+        try:
+            tp1 = bool(row.get("tp1_hit"))
+            tp2 = bool(row.get("tp2_hit"))
+            tp3 = bool(row.get("tp3_hit"))
+            rl  = row.get("result_label") or ""
+
+            # Derive realized_r from which TPs were hit
+            realized_r = 0.0
+            if tp1: realized_r += 0.50 * 1.0
+            if tp2: realized_r += 0.25 * 2.0
+            if tp3: realized_r += 0.25 * 3.0
+
+            if rl == "TP3" or tp3:
+                outcome = "WIN"
+            elif rl in ("STOPPED_BE_AFTER_TP",) or (tp1 and rl == "STOPPED"):
+                outcome = "WIN" if realized_r > 0.01 else "BREAKEVEN"
+            elif rl in ("STOPPED", "EXPIRED_LOSS") and not tp1:
+                realized_r = -1.0
+                outcome    = "LOSS"
+            elif rl in ("TP1", "TP2", "EXPIRED_PROFIT") or tp1:
+                outcome = "WIN"
+            else:
+                realized_r = -1.0
+                outcome    = "LOSS"
+
+            risk_dist = float(row.get("risk_distance") or 0)
+            risk_usd  = float(row.get("risk_usd") or 0)
+            realized_pts = round(realized_r * risk_dist, 2) if risk_dist else None
+            realized_usd = round(realized_r * risk_usd, 2) if risk_usd else None
+
+            portions = {
+                "tp1": 0.50 if tp1 else 0,
+                "tp2": 0.25 if tp2 else 0,
+                "tp3": 0.25 if tp3 else 0,
+            }
+
+            patch: dict = {
+                "realized_r":    round(realized_r, 3),
+                "outcome_class": outcome,
+                "portions_closed": portions,
+            }
+            if realized_pts is not None:
+                patch["realized_pnl_pts"] = realized_pts
+            if realized_usd is not None:
+                patch["realized_pnl_usd"] = realized_usd
+
+            sb.table("signal_history").update(patch).eq("id", row["id"]).execute()
+            updated += 1
+        except Exception as e:
+            logger.error(f"backfill-r row {row.get('id')}: {e}")
+            errors += 1
+
+    logger.info(f"backfill-r complete: {updated} updated, {errors} errors")
+    return {
+        "updated": updated,
+        "errors":  errors,
+        "message": f"Backfilled realized_r for {updated} closed signals. Re-fetch /signal-history/stats to see updated avg_r / expectancy.",
+    }
+
+
 @router.get("/signal-history/open")
 async def get_open_signals():
     """Currently open signals (status='OPEN')."""
