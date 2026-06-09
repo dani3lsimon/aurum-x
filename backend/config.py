@@ -83,6 +83,10 @@ class Settings(BaseSettings):
             return "https://api-fxpractice.oanda.com"
         return "https://api-fxtrade.oanda.com"
 
+    # Kronos probabilistic forecast microservice (separate VM — no torch on Railway)
+    kronos_service_url:  str = ""   # e.g. https://1.2.3.4.sslip.io/kronos
+    kronos_auth_token:   str = ""
+
     # Cache via Supabase cache table — Redis not required
     redis_url: str = ""
 

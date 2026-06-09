@@ -228,6 +228,25 @@ async def get_smc_patterns():
     return await analyze_all()
 
 
+@router.get("/kronos/latest")
+async def get_latest_kronos():
+    """Latest cached Kronos-mini probabilistic forecasts per timeframe.
+    Returns {'available': False} per timeframe if Kronos host is offline."""
+    from services.redis_service import cache_get
+    results = {}
+    for tf in ['15min', '1h', '4h']:
+        results[tf] = await cache_get(f'kronos_{tf}') or {'available': False}
+    return results
+
+
+@router.get("/kronos/accuracy")
+async def get_kronos_accuracy():
+    """Directional hit rate per timeframe. 'trusted' becomes True at n≥20
+    and hit_rate>55% — that's when Kronos earns real weight in the fusion agent."""
+    from services.kronos_tracker import get_accuracy_stats
+    return await get_accuracy_stats()
+
+
 @router.get("/signal-history")
 async def get_signal_history_endpoint(limit: int = 100, timeframe: str | None = None):
     """Full signal journal — every recorded signal and its current outcome."""

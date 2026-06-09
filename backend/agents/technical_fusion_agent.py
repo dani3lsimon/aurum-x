@@ -30,26 +30,90 @@ class TechnicalFusionAgent:
     cache_ttl  = CACHE_TTL
 
     async def collect_data(self) -> dict:
+        import asyncio
         from engines.patterns_engine import analyze_all
         from engines.macro_bias import get_macro_bias
         from services.supabase_service import get_latest_agent_scores, get_latest_forecast
+        from services.kronos_client import get_kronos_all_timeframes
+        from services.kronos_tracker import get_accuracy_stats, log_forecast
+        from collectors.oanda_collector import OandaCollector
 
-        smc      = await analyze_all()
-        agents   = await get_latest_agent_scores()
-        forecast = await get_latest_forecast()
-        mbs      = await get_macro_bias()
+        smc, agents, forecast, mbs, accuracy = await asyncio.gather(
+            analyze_all(),
+            get_latest_agent_scores(),
+            get_latest_forecast(),
+            get_macro_bias(),
+            get_accuracy_stats(),
+        )
+
+        # Fetch OANDA candles for Kronos (each TF in parallel; empty list on failure)
+        oanda = OandaCollector()
+        candles_by_tf = {}
+        for tf, gran, count in [('15min', 'M15', 400), ('1h', 'H1', 400), ('4h', 'H4', 200)]:
+            try:
+                raw = await oanda.get_candles('XAU_USD', gran, count)
+                candles_by_tf[tf] = [
+                    {'open': float(c['open']), 'high': float(c['high']),
+                     'low': float(c['low']),  'close': float(c['close']),
+                     'volume': int(c.get('volume', 0)), 'time': c['time']}
+                    for c in raw if c.get('complete', True)
+                ]
+            except Exception:
+                candles_by_tf[tf] = []
+
+        kronos = await get_kronos_all_timeframes(candles_by_tf)
+
+        # Log Kronos forecasts for accuracy tracking
+        entry_price = float(forecast.get('gold_price', 0)) if forecast else 0.0
+        for tf, fc in kronos.items():
+            if fc.get('available'):
+                await log_forecast(fc, tf, entry_price)
+
         fundamentals = {s.get("agent_name"): {"score": s.get("score"), "bias": s.get("raw_data", {}).get("directional_bias")}
                         for s in (agents or [])}
-        return {"smc": smc, "fundamentals": fundamentals, "mbs": mbs,
-                "regime": forecast.get("macro_regime") if forecast else "unknown"}
+        return {
+            "smc":             smc,
+            "kronos":          kronos,
+            "kronos_accuracy": accuracy,
+            "fundamentals":    fundamentals,
+            "mbs":             mbs,
+            "regime":          forecast.get("macro_regime") if forecast else "unknown",
+        }
 
     def build_prompt(self, data: dict) -> str:
+        # Build Kronos section dynamically
+        kronos_lines = []
+        for tf, fc in (data.get('kronos') or {}).items():
+            if not fc.get('available'):
+                continue
+            acc       = data.get('kronos_accuracy', {}).get(tf, {})
+            trusted   = acc.get('trusted', False)
+            hit_rate  = acc.get('hit_rate')
+            note      = acc.get('note', 'insufficient data')
+            weight_note = (
+                f"[TRUSTED — {hit_rate}% directional hit rate over {acc.get('n')} forecasts]"
+                if trusted else
+                f"[UNPROVEN — {note} — treat as weak signal only]"
+            )
+            move = fc.get('expected_move_pts', 0)
+            kronos_lines.append(
+                f"  {tf.upper()}: predicts {fc.get('direction', '?')} → {fc.get('predicted_close')} "
+                f"({move:+.2f} pts) by {fc.get('target_time', '?')} "
+                f"[range {fc.get('predicted_low')}–{fc.get('predicted_high')}] {weight_note}"
+            )
+        if kronos_lines:
+            kronos_section = "KRONOS PROBABILISTIC FORECAST (time-series model, separate from SMC):\n" + "\n".join(kronos_lines)
+        else:
+            kronos_section = "KRONOS: offline — disregard this section"
+
         return f"""You are a senior gold (XAUUSD) trader fusing Smart Money Concepts price-action with macro fundamentals.
 
 The SMC data below is from a deterministic engine — TRUST the patterns and price levels, do not recalculate.
 
 SMC PATTERNS (15m/1h/4h) — net_confluence -5 bearish .. +5 bullish:
 {json.dumps(data['smc'], indent=2)}
+
+{kronos_section}
 
 FUNDAMENTAL AGENT SCORES (-100 bearish .. +100 bullish):
 {json.dumps(data['fundamentals'], indent=2)}
@@ -72,7 +136,7 @@ Produce ONLY this JSON (no markdown):
   "risk_note": "<what abandons this view early>"
 }}
 
-Rules: every price level must come from the SMC data. If SMC and fundamentals conflict, say so and lower probability. If net_confluence is between -1 and +1, default to NO_TRADE. Score your own confidence honestly."""
+Rules: every price level must come from the SMC data. If SMC and fundamentals conflict, say so and lower probability. If net_confluence is between -1 and +1, default to NO_TRADE. If Kronos is UNPROVEN, treat its direction as a very weak tiebreaker only, not a primary signal. If TRUSTED (≥55% hit rate, n≥20), give it meaningful weight alongside the SMC structure. Score your own confidence honestly."""
 
     async def run(self) -> dict:
         cached = await cache_get(CACHE_KEY)

@@ -91,6 +91,10 @@ class AurumScheduler:
         self.scheduler.add_job(self._run_smc_monitor, IntervalTrigger(seconds=30),
                                id="smc_monitor", replace_existing=True)
 
+        # Kronos accuracy checker — resolves pending predictions every 15 min
+        self.scheduler.add_job(self._check_kronos_predictions, IntervalTrigger(minutes=15),
+                               id="kronos_accuracy_check", replace_existing=True)
+
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
 
@@ -344,6 +348,14 @@ class AurumScheduler:
             await check_for_changes()
         except Exception as e:
             logger.error(f"SMC monitor scheduler error: {e}")
+
+    async def _check_kronos_predictions(self):
+        """Resolve pending Kronos predictions whose target_time has passed."""
+        try:
+            from services.kronos_tracker import check_pending_predictions
+            await check_pending_predictions()
+        except Exception as e:
+            logger.error(f"Kronos accuracy check error: {e}")
 
     async def _run_fmp_calendar_sync(self):
         try:
