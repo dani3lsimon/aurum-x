@@ -23,6 +23,52 @@ CACHE_KEY = "technical_fusion_signal"
 CACHE_TTL = 60   # 1 min — fresh enough for live trading
 
 
+def _validate_targets(result: dict) -> dict:
+    """
+    Sanity-check that targets are on the correct side of the entry zone.
+    SHORT → targets must be BELOW entry low.
+    LONG  → targets must be ABOVE entry high.
+    If invalid, nulls out the bad target and flags result["target_error"].
+    """
+    direction = result.get("direction", "NEUTRAL")
+    if direction == "NEUTRAL":
+        return result
+
+    # Parse entry zone — expected format "4282.11-4289.59" or a single price
+    entry_zone = str(result.get("entry_zone", ""))
+    try:
+        parts = [float(p.replace(",", "").strip()) for p in entry_zone.replace("$", "").split("-") if p.strip()]
+        entry_lo = min(parts)
+        entry_hi = max(parts)
+    except Exception:
+        return result   # can't parse entry zone — skip validation
+
+    errors = []
+    for key in ("first_target", "second_target"):
+        raw = result.get(key)
+        if not raw:
+            continue
+        try:
+            tp = float(str(raw).replace("$", "").replace(",", "").split()[0])
+        except Exception:
+            continue
+
+        if direction == "SHORT" and tp > entry_lo:
+            logger.warning(f"[fusion_validate] SHORT target {key}={tp} is ABOVE entry low {entry_lo} — nulling")
+            result[key] = None
+            errors.append(f"{key} {tp} above SHORT entry {entry_lo}")
+        elif direction == "LONG" and tp < entry_hi:
+            logger.warning(f"[fusion_validate] LONG target {key}={tp} is BELOW entry high {entry_hi} — nulling")
+            result[key] = None
+            errors.append(f"{key} {tp} below LONG entry {entry_hi}")
+
+    if errors:
+        result["target_error"] = "Invalid targets removed: " + "; ".join(errors)
+        logger.error(f"[fusion_validate] direction={direction} entry={entry_zone} | {result['target_error']}")
+
+    return result
+
+
 class TechnicalFusionAgent:
     """Senior-trader fusion of deterministic SMC structure with fundamentals.
     Trusts the SMC engine's price levels verbatim — never recalculates them."""
@@ -138,7 +184,13 @@ Produce ONLY this JSON (no markdown):
   "risk_note": "<what abandons this view early>"
 }}
 
-Rules: every price level must come from the SMC data. If SMC and fundamentals conflict, say so and lower probability. If net_confluence is between -1 and +1, default to NO_TRADE. If Kronos is UNPROVEN, treat its direction as a very weak tiebreaker only, not a primary signal. If TRUSTED (≥55% hit rate, n≥20), give it meaningful weight alongside the SMC structure. Score your own confidence honestly."""
+Rules:
+- Every price level must come from the SMC data.
+- CRITICAL: For SHORT trades, first_target and second_target MUST be BELOW the entry_zone lower bound. For LONG trades, targets MUST be ABOVE the entry_zone upper bound. A target on the wrong side of entry is never valid.
+- If SMC and fundamentals conflict, say so and lower probability.
+- If net_confluence is between -1 and +1, default to NO_TRADE.
+- If Kronos is UNPROVEN, treat its direction as a very weak tiebreaker only, not a primary signal. If TRUSTED (≥55% hit rate, n≥20), give it meaningful weight alongside the SMC structure.
+- Score your own confidence honestly."""
 
     async def _call_anthropic(self, prompt: str) -> tuple[dict, str]:
         """Call Claude Sonnet. Returns (result_dict, provider_label)."""
@@ -254,6 +306,9 @@ Rules: every price level must come from the SMC data. If SMC and fundamentals co
                 logger.error(f"[technical_fusion] Both providers failed. Anthropic: {anthropic_err} | DeepSeek: {ds_err}")
                 return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
                         "reasoning": f"Both providers failed: {ds_err}", "error": str(ds_err)}
+
+        # ── Sanity check: targets must be on the correct side of entry ──────────
+        result = _validate_targets(result)
 
         from datetime import datetime, timezone
         result["generated_at"] = datetime.now(timezone.utc).isoformat()
