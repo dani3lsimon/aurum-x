@@ -70,11 +70,19 @@ const ALIGNMENT_LABEL: Record<string, { label: string; color: string }> = {
   neutral:         { label: '· NEUTRAL',          color: '#6b7494' },
 }
 
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
 export default function TechnicalPanel() {
-  const [smc, setSmc]           = useState<any>(null)
-  const [fusion, setFusion]     = useState<any>(null)
-  const [loading, setLoading]   = useState(true)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [smc, setSmc]                   = useState<any>(null)
+  const [fusion, setFusion]             = useState<any>(null)
+  const [loading, setLoading]           = useState(true)
+  const [lastUpdated, setLastUpdated]   = useState<Date | null>(null)
+  const [changeAlert, setChangeAlert]   = useState<any[] | null>(null)
+  const [alertFlash, setAlertFlash]     = useState(false)
 
   const fetchData = async () => {
     try {
@@ -95,6 +103,40 @@ export default function TechnicalPanel() {
     return () => clearInterval(interval)
   }, [])
 
+  // WebSocket: listen for smc_change events broadcast by the backend monitor
+  useEffect(() => {
+    const WS_URL = (process.env.NEXT_PUBLIC_WS_URL || BACKEND.replace(/^http/, 'ws')) + '/ws'
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout>
+
+    const connect = () => {
+      try {
+        ws = new WebSocket(WS_URL)
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg.type === 'smc_change' && msg.changes?.length) {
+              setChangeAlert(msg.changes)
+              setAlertFlash(true)
+              // Immediately re-fetch so panel shows the new data
+              fetchData()
+              // Auto-dismiss flash after 8s but keep the change list visible
+              setTimeout(() => setAlertFlash(false), 8000)
+            }
+          } catch {}
+        }
+        ws.onclose = () => { reconnectTimer = setTimeout(connect, 5000) }
+        ws.onerror = () => { ws?.close() }
+      } catch {}
+    }
+
+    connect()
+    return () => {
+      clearTimeout(reconnectTimer)
+      ws?.close()
+    }
+  }, [])
+
   if (loading && !smc) {
     return (
       <div className="aurum-card" style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: '#4a5068', letterSpacing: '0.14em', minHeight: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -107,6 +149,31 @@ export default function TechnicalPanel() {
 
   return (
     <div className="aurum-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
+
+      {/* AI Change Alert Banner — shown when backend monitor detects a flip */}
+      {changeAlert && (
+        <div style={{
+          padding: '8px 12px',
+          background: alertFlash ? 'rgba(255,119,68,0.15)' : 'rgba(255,119,68,0.06)',
+          border: `1px solid ${alertFlash ? 'rgba(255,119,68,0.7)' : 'rgba(255,119,68,0.2)'}`,
+          borderRadius: '2px',
+          transition: 'background 0.5s, border-color 0.5s',
+          display: 'flex', flexDirection: 'column', gap: '4px',
+        }}>
+          <div style={{ fontSize: '10px', fontWeight: 800, color: '#ff7744', letterSpacing: '0.12em' }}>
+            ◆ MONITOR DETECTED {changeAlert.length} CHANGE{changeAlert.length > 1 ? 'S' : ''}
+          </div>
+          {changeAlert.map((c, i) => (
+            <div key={i} style={{ fontSize: '10px', color: c.urgent ? '#ffb347' : '#6b7494', letterSpacing: '0.08em' }}>
+              {c.label}: {String(c.from).toUpperCase()} → {String(c.to).toUpperCase()}
+            </div>
+          ))}
+          <button onClick={() => setChangeAlert(null)} style={{
+            alignSelf: 'flex-end', fontSize: '9px', color: '#4a5068', background: 'none',
+            border: 'none', cursor: 'pointer', letterSpacing: '0.1em', padding: '0',
+          }}>DISMISS</button>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
@@ -123,6 +190,13 @@ export default function TechnicalPanel() {
           </span>
         </div>
       </div>
+
+      {/* SMC server-side timestamp */}
+      {smc?.fetched_at && (
+        <div style={{ fontSize: '9px', color: '#2a2d3a', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace', marginTop: '-8px' }}>
+          SERVER COMPUTED {fmtTime(smc.fetched_at)} UTC · CACHE {smc.cache_ttl_s ?? 30}s
+        </div>
+      )}
 
       {/* Per-timeframe structure */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
@@ -182,8 +256,15 @@ export default function TechnicalPanel() {
       <div style={{ minHeight: '180px' }}>
       {fusion && !fusion.error && (
         <div style={{ padding: '12px', border: '1px solid rgba(255,80,0,0.14)', borderRadius: '2px', background: 'rgba(255,80,0,0.02)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.14em', color: '#ff7744' }}>⚡ FUSION THESIS</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.14em', color: '#ff7744' }}>⚡ FUSION THESIS</span>
+              {fusion.generated_at && (
+                <span style={{ fontSize: '9px', color: '#2a2d3a', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace' }}>
+                  CLAUDE SONNET · GENERATED {fmtTime(fusion.generated_at)} UTC · CACHE {fusion.cache_ttl_s ?? 60}s
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span style={{ fontSize: '13px', fontWeight: 800, color: DIR_COLOR[fusion.direction === 'LONG' ? 'bullish' : fusion.direction === 'SHORT' ? 'bearish' : 'neutral'] }}>
                 {fusion.direction === 'LONG' ? '▲ LONG' : fusion.direction === 'SHORT' ? '▼ SHORT' : '· NEUTRAL'}

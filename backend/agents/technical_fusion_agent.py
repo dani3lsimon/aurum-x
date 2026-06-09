@@ -104,7 +104,9 @@ Rules: every price level must come from the SMC data. If SMC and fundamentals co
                     raw = raw[4:]
                 raw = raw.strip()
             result = json.loads(raw)
-            result["generated_at"] = data["smc"].get("net_confluence") and __import__("datetime").datetime.utcnow().isoformat()
+            from datetime import datetime, timezone
+            result["generated_at"] = datetime.now(timezone.utc).isoformat()
+            result["cache_ttl_s"]  = self.cache_ttl
 
             logger.info(
                 f"[technical_fusion] {result.get('direction')} | "

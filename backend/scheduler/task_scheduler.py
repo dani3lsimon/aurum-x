@@ -87,6 +87,10 @@ class AurumScheduler:
         self.scheduler.add_job(self._run_multi_tf, IntervalTrigger(minutes=5),
                                id="multi_tf", replace_existing=True)
 
+        # SMC change monitor — every 30 seconds, zero cost (just diffs cached results)
+        self.scheduler.add_job(self._run_smc_monitor, IntervalTrigger(seconds=30),
+                               id="smc_monitor", replace_existing=True)
+
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
 
@@ -331,6 +335,15 @@ class AurumScheduler:
             logger.info(f"Multi-TF: {result.get('best_signal')} | TF: {result.get('best_timeframe')}")
         except Exception as e:
             logger.error(f"Multi-TF scheduler error: {e}")
+
+    async def _run_smc_monitor(self):
+        """Zero-cost change detector — diffs cached SMC + Fusion results every 30s
+        and broadcasts a WebSocket 'smc_change' event when direction/alignment flips."""
+        try:
+            from services.smc_monitor import check_for_changes
+            await check_for_changes()
+        except Exception as e:
+            logger.error(f"SMC monitor scheduler error: {e}")
 
     async def _run_fmp_calendar_sync(self):
         try:
