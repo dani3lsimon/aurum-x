@@ -56,13 +56,15 @@ services:
       retries: 3
       start_period: 120s
 
-  # ── Cloudflare quick tunnel — exposes Kronos to Railway backend ──────────
-  # Prints the public HTTPS URL in logs: docker compose logs kronos-tunnel
-  # Copy that URL → KRONOS_SERVICE_URL in Railway environment variables
+  # ── ngrok permanent tunnel — exposes Kronos to Railway backend ───────────
+  # Static domain: armoire-strategy-ibuprofen.ngrok-free.dev (free, permanent)
+  # KRONOS_SERVICE_URL = https://armoire-strategy-ibuprofen.ngrok-free.dev
   kronos-tunnel:
-    image: cloudflare/cloudflared:latest
+    image: ngrok/ngrok:latest
     container_name: aurum-kronos-tunnel
-    command: tunnel --url http://kronos:8090 --no-autoupdate
+    command: http kronos:8090 --domain=armoire-strategy-ibuprofen.ngrok-free.dev --log=stdout
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     depends_on:
       - kronos
     restart: unless-stopped
