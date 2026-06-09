@@ -389,7 +389,9 @@ async def evaluate_multi_tf(vix: float = None) -> dict:
 
     shared = {
         "dxy_momentum_pct":  dxy_momentum,
+        "dxy_source":        dxy_source,
         "yield_agent_score": yield_agent_score,
+        "yield_source":      yield_source,
         "cot_signal":        cot_signal,
         "etf_signal":        (etf_data or {}).get("combined_signal", "neutral"),
         "risk_score":        risk_score,
