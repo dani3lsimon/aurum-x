@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
+import UpdateBadge from './UpdateBadge'
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+const BACKEND    = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+const REFRESH_MS = 30_000   // 30s — backend SMC cache is 30s
 
 const DIR_COLOR: Record<string, string> = {
   bullish: '#22c55e',
@@ -69,9 +71,10 @@ const ALIGNMENT_LABEL: Record<string, { label: string; color: string }> = {
 }
 
 export default function TechnicalPanel() {
-  const [smc, setSmc]       = useState<any>(null)
-  const [fusion, setFusion] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [smc, setSmc]           = useState<any>(null)
+  const [fusion, setFusion]     = useState<any>(null)
+  const [loading, setLoading]   = useState(true)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const fetchData = async () => {
     try {
@@ -81,13 +84,14 @@ export default function TechnicalPanel() {
       ])
       setSmc(p)
       setFusion(f)
+      setLastUpdated(new Date())
     } catch {}
     setLoading(false)
   }
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 60000)
+    const interval = setInterval(fetchData, REFRESH_MS)
     return () => clearInterval(interval)
   }, [])
 
@@ -105,11 +109,12 @@ export default function TechnicalPanel() {
     <div className="aurum-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
         <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.16em', color: '#ff7744' }}>
           ⌬ SMART MONEY STRUCTURE
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <UpdateBadge lastUpdated={lastUpdated} intervalMs={REFRESH_MS} label="OANDA" />
           <span style={{ fontSize: '10px', color: '#4a5068', letterSpacing: '0.1em' }}>
             NET {smc?.net_confluence != null ? (smc.net_confluence > 0 ? '+' : '') + smc.net_confluence.toFixed(2) : '—'}
           </span>

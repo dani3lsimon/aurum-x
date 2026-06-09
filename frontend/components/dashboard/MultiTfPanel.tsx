@@ -1,5 +1,6 @@
 'use client'
 import { MultiTfSignal, TfScore } from '@/lib/types'
+import UpdateBadge from './UpdateBadge'
 
 interface Props {
   multiTf: MultiTfSignal | null
@@ -176,7 +177,14 @@ export default function MultiTfPanel({ multiTf, signalChanged, signalChangedAt, 
 
   return (
     <div className="aurum-card p-4" style={{ height: '100%' }}>
-      <div className="section-label" style={{ marginBottom: '12px' }}>Multi-Timeframe Confluence</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '4px' }}>
+        <div className="section-label">Multi-Timeframe Confluence</div>
+        <UpdateBadge
+          lastUpdated={multiTf?.timestamp ? new Date(multiTf.timestamp) : null}
+          intervalMs={300_000}
+          label="OANDA · FRED"
+        />
+      </div>
 
       {signalChanged && (
         <div style={{

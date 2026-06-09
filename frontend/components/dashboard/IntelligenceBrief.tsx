@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import UpdateBadge from './UpdateBadge'
 
 interface Brief {
   headline:         string
@@ -22,10 +23,11 @@ interface Brief {
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 export function IntelligenceBrief() {
-  const [brief,     setBrief]     = useState<Brief | null>(null)
-  const [loading,   setLoading]   = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
+  const [brief,       setBrief]       = useState<Brief | null>(null)
+  const [loading,     setLoading]     = useState(true)
+  const [refreshing,  setRefreshing]  = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const fetchBrief = async (forceRefresh = false) => {
     try {
@@ -34,7 +36,7 @@ export function IntelligenceBrief() {
       const response = await fetch(url, { method })
       const data     = await response.json()
       if (data.error) setError(data.error)
-      else { setBrief(data); setError(null) }
+      else { setBrief(data); setError(null); setLastUpdated(new Date()) }
     } catch (e) {
       setError('Failed to load intelligence brief')
     } finally {
@@ -72,6 +74,7 @@ export function IntelligenceBrief() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <UpdateBadge lastUpdated={lastUpdated} intervalMs={1_800_000} label="CLAUDE" />
           {timeAgo && (
             <span style={{ fontSize: '0.5rem', color: '#4a5068', letterSpacing: '0.1em' }}>
               {timeAgo}

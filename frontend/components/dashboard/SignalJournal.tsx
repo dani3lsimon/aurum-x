@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
+import UpdateBadge from './UpdateBadge'
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+const BACKEND    = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+const REFRESH_MS = 30_000
 
 const STATUS_CONFIG: Record<string, { color: string; label: string; bg: string }> = {
   OPEN:           { color: '#ffb347', label: 'OPEN',    bg: 'rgba(255,179,71,0.1)' },
@@ -21,10 +23,11 @@ const RESULT_CONFIG: Record<string, { color: string; label: string }> = {
 }
 
 export function SignalJournal({ livePrice }: { livePrice: number }) {
-  const [signals,  setSignals]  = useState<any[]>([])
-  const [stats,    setStats]    = useState<any>(null)
-  const [filter,   setFilter]   = useState<'all'|'15min'|'1h'|'4h'>('all')
-  const [loading,  setLoading]  = useState(true)
+  const [signals,     setSignals]     = useState<any[]>([])
+  const [stats,       setStats]       = useState<any>(null)
+  const [filter,      setFilter]      = useState<'all'|'15min'|'1h'|'4h'>('all')
+  const [loading,     setLoading]     = useState(true)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const fetchData = async () => {
     try {
@@ -34,14 +37,14 @@ export function SignalJournal({ livePrice }: { livePrice: number }) {
       ])
       setSignals(Array.isArray(sigs) ? sigs : [])
       setStats(st)
+      setLastUpdated(new Date())
     } catch {}
     setLoading(false)
   }
 
   useEffect(() => { fetchData() }, [filter])
   useEffect(() => {
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000)
+    const interval = setInterval(fetchData, REFRESH_MS)
     return () => clearInterval(interval)
   }, [filter])
 
@@ -56,6 +59,14 @@ export function SignalJournal({ livePrice }: { livePrice: number }) {
 
   return (
     <div style={{ padding: '16px', height: 'calc(100vh - 110px)', display: 'flex', flexDirection: 'column', gap: '10px', overflow: 'hidden' }}>
+
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.16em', color: '#ff7744' }}>
+          ◆ SIGNAL JOURNAL
+        </span>
+        <UpdateBadge lastUpdated={lastUpdated} intervalMs={REFRESH_MS} label="SUPABASE" />
+      </div>
 
       {/* Performance summary */}
       {stats && stats.total > 0 && (

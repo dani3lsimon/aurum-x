@@ -336,5 +336,8 @@ async def analyze_all() -> Dict:
 
     result["net_confluence"] = net
     result["alignment"]      = alignment
-    await cache_set(cache_key, result, ttl_seconds=120)
+    from datetime import datetime, timezone
+    result["fetched_at"]     = datetime.now(timezone.utc).isoformat()
+    result["cache_ttl_s"]    = 30
+    await cache_set(cache_key, result, ttl_seconds=30)
     return result

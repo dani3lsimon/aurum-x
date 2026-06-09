@@ -18,7 +18,7 @@ settings = get_settings()
 client   = anthropic.Anthropic()
 
 CACHE_KEY = "technical_fusion_signal"
-CACHE_TTL = 300  # 5 min — matches multi-tf engine cycle
+CACHE_TTL = 60   # 1 min — fresh enough for live trading
 
 
 class TechnicalFusionAgent:
