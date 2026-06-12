@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo, Fragment, useCallback } from 'react'
 
 const BACKEND    = process.env.NEXT_PUBLIC_BACKEND_URL || ''
 const REFRESH_MS = 5 * 60_000
@@ -184,9 +184,37 @@ function PatternDetail({ pattern }: { pattern: EventPattern }) {
   )
 }
 
+// key = "YYYY-MM-DD_event_name_slug"
+function makeEventKey(ev: EconomicEvent): string {
+  const slug = ev.event.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40)
+  return `${ev.date.slice(0, 10)}_${slug}`
+}
+
+// outcome: true=✓ correct, false=✗ wrong, undefined=unset
+function OutcomeToggle({ value, onToggle, disabled }: { value: boolean | undefined; onToggle: () => void; disabled?: boolean }) {
+  if (disabled) return null
+  return (
+    <span
+      onClick={e => { e.stopPropagation(); onToggle() }}
+      title={value === true ? 'Correct — click to mark wrong' : value === false ? 'Wrong — click to clear' : 'Click to mark correct'}
+      style={{
+        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: '18px', height: '18px', borderRadius: '2px', fontSize: '11px', fontWeight: 800,
+        border: `1px solid ${value === true ? 'rgba(34,197,94,0.4)' : value === false ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+        background: value === true ? 'rgba(34,197,94,0.1)' : value === false ? 'rgba(239,68,68,0.1)' : 'transparent',
+        color: value === true ? '#22c55e' : value === false ? '#ef4444' : '#3a3f52',
+        transition: 'all 0.15s',
+      }}
+    >
+      {value === true ? '✓' : value === false ? '✗' : '○'}
+    </span>
+  )
+}
+
 export default function EconomicCalendarPanel() {
   const [events,   setEvents]   = useState<EconomicEvent[]>([])
   const [patterns, setPatterns] = useState<EventPattern[]>([])
+  const [outcomes, setOutcomes] = useState<Map<string, boolean>>(new Map())
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [filter,   setFilter]   = useState<'all' | 'gold'>('gold')
@@ -209,9 +237,52 @@ export default function EconomicCalendarPanel() {
     } catch { /* patterns are optional — silently skip */ }
   }
 
+  const fetchOutcomes = async () => {
+    try {
+      const data = await fetch(`${BACKEND}/forecast/calendar-outcomes`).then(r => r.json())
+      if (data.status === 'ok') {
+        const m = new Map<string, boolean>()
+        for (const o of (data.outcomes || [])) m.set(o.event_key, o.correct)
+        setOutcomes(m)
+      }
+    } catch { /* silently skip */ }
+  }
+
+  const handleOutcomeToggle = useCallback(async (ev: EconomicEvent, etype: string | null, predicted: string | null) => {
+    const key     = makeEventKey(ev)
+    const current = outcomes.get(key)
+    const next    = current === undefined ? true : current === true ? false : undefined
+
+    // Optimistic update
+    setOutcomes(prev => {
+      const m = new Map(prev)
+      if (next === undefined) m.delete(key)
+      else m.set(key, next)
+      return m
+    })
+
+    if (next === undefined) {
+      await fetch(`${BACKEND}/forecast/calendar-outcome/${encodeURIComponent(key)}`, { method: 'DELETE' })
+    } else {
+      await fetch(`${BACKEND}/forecast/calendar-outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_key:  key,
+          event_name: ev.event,
+          event_date: ev.date.slice(0, 10),
+          event_type: etype,
+          predicted,
+          correct: next,
+        }),
+      })
+    }
+  }, [outcomes])
+
   useEffect(() => {
     fetchEvents()
     fetchPatterns()
+    fetchOutcomes()
     const iv = setInterval(fetchEvents, REFRESH_MS)
     return () => clearInterval(iv)
   }, [])
@@ -220,6 +291,11 @@ export default function EconomicCalendarPanel() {
     () => new Map(patterns.map(p => [p.event_type, p])),
     [patterns]
   )
+
+  const outcomeValues = useMemo(() => Array.from(outcomes.values()), [outcomes])
+  const trackedTotal  = outcomeValues.length
+  const trackedRight  = outcomeValues.filter(Boolean).length
+  const accuracyPct   = trackedTotal > 0 ? Math.round(trackedRight / trackedTotal * 100) : null
 
   const now     = Date.now()
   const visible = events
@@ -233,13 +309,24 @@ export default function EconomicCalendarPanel() {
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.16em', color: '#ff7744' }}>
             ◆ ECONOMIC CALENDAR
           </span>
-          <span style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.1em', marginLeft: '10px', fontFamily: 'JetBrains Mono, monospace' }}>
+          <span style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace' }}>
             NEXT 7 DAYS · MEDIUM + HIGH IMPACT · LONDON TIME (UTC+1)
           </span>
+          {accuracyPct !== null && (
+            <span style={{
+              fontSize: '9px', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace',
+              color: accuracyPct >= 60 ? '#22c55e' : accuracyPct >= 45 ? '#ffb347' : '#ef4444',
+              background: accuracyPct >= 60 ? 'rgba(34,197,94,0.08)' : accuracyPct >= 45 ? 'rgba(255,179,71,0.08)' : 'rgba(239,68,68,0.08)',
+              border: `1px solid ${accuracyPct >= 60 ? 'rgba(34,197,94,0.25)' : accuracyPct >= 45 ? 'rgba(255,179,71,0.25)' : 'rgba(239,68,68,0.25)'}`,
+              padding: '1px 7px', borderRadius: '2px',
+            }}>
+              YOUR ACCURACY {trackedRight}/{trackedTotal} ({accuracyPct}%)
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '4px' }}>
           {(['gold', 'all'] as const).map(f => (
@@ -281,12 +368,12 @@ export default function EconomicCalendarPanel() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  {['TIME (LONDON)', 'COUNTDOWN', 'CCY', 'EVENT', 'IMPACT', 'PATTERN', 'ACTUAL', 'FCST', 'PREV'].map(h => (
+                  {['TIME (LONDON)', 'COUNTDOWN', 'CCY', 'EVENT', 'IMPACT', 'PATTERN', '✓/✗', 'ACTUAL', 'FCST', 'PREV'].map(h => (
                     <th key={h} style={{
                       padding: '6px 10px',
-                      textAlign: h === 'ACTUAL' || h === 'FCST' || h === 'PREV' ? 'right' : 'left',
+                      textAlign: h === 'ACTUAL' || h === 'FCST' || h === 'PREV' ? 'right' : 'center',
                       fontSize: '9px',
-                      color: h === 'PATTERN' ? 'rgba(255,119,68,0.6)' : '#4a5068',
+                      color: h === 'PATTERN' ? 'rgba(255,119,68,0.6)' : h === '✓/✗' ? 'rgba(255,255,255,0.2)' : '#4a5068',
                       letterSpacing: '0.12em', fontWeight: 600, whiteSpace: 'nowrap',
                     }}>
                       {h}
@@ -305,6 +392,11 @@ export default function EconomicCalendarPanel() {
                   const pat         = etype ? patternMap.get(etype) : undefined
                   const isExpanded  = expanded === i
                   const hasPattern  = pat && pat.total_events >= 5 && pat.pre_15m_opposite_pct !== null
+                  const eventKey    = makeEventKey(ev)
+                  const outcome     = outcomes.get(eventKey)
+                  const predicted   = hasPattern
+                    ? (pat!.pre_15m_opposite_pct! >= 60 ? 'FADES' : pat!.pre_15m_opposite_pct! <= 40 ? 'TRENDS' : 'MIX')
+                    : null
                   return (
                     <Fragment key={i}>
                       <tr
@@ -353,6 +445,14 @@ export default function EconomicCalendarPanel() {
                             </span>
                           )}
                         </td>
+                        {/* OUTCOME toggle — only for released events with a pattern */}
+                        <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <OutcomeToggle
+                            value={outcome}
+                            disabled={!cd.isPast || !hasPattern}
+                            onToggle={() => handleOutcomeToggle(ev, etype, predicted)}
+                          />
+                        </td>
                         <td style={{
                           padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap',
                           color: ev.actual != null ? '#22c55e' : '#4a5068',
@@ -369,7 +469,7 @@ export default function EconomicCalendarPanel() {
                       </tr>
                       {isExpanded && pat && (
                         <tr style={{ background: 'rgba(255,255,255,0.015)' }}>
-                          <td colSpan={9} style={{
+                          <td colSpan={10} style={{
                             padding: '8px 16px 10px',
                             borderBottom: '1px solid rgba(255,255,255,0.06)',
                           }}>
@@ -387,7 +487,7 @@ export default function EconomicCalendarPanel() {
       )}
 
       <div style={{ fontSize: '9px', color: '#2a2d3a', letterSpacing: '0.1em', marginTop: 'auto', paddingTop: '8px' }}>
-        ◈ = GOLD-RELEVANT · PATTERN = PRE-15m FADE RATE · CLICK ROW FOR DETAILS · DATA: FOREXFACTORY / FRED
+        ◈ = GOLD-RELEVANT · PATTERN = PRE-15m FADE RATE · ✓/✗ = MARK OUTCOME AFTER RELEASE · CLICK ROW FOR DETAILS
       </div>
     </div>
   )

@@ -277,6 +277,60 @@ async def get_economic_calendar(days: int = 7, debug: bool = False):
         return {"status": "error", "message": str(e), "events": []}
 
 
+@router.get("/calendar-outcomes")
+async def get_calendar_outcomes():
+    """All manually tracked prediction outcomes (✓/✗) for the economic calendar."""
+    import asyncio
+    cache_key = "calendar_outcomes"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+    try:
+        sb = get_supabase()
+        result = await asyncio.to_thread(
+            lambda: sb.table("calendar_outcomes").select("*").execute()
+        )
+        data = {"status": "ok", "outcomes": result.data or []}
+        await cache_set(cache_key, data, ttl_seconds=60)
+        return data
+    except Exception as exc:
+        logger.error(f"calendar-outcomes fetch error: {exc}")
+        return {"status": "error", "outcomes": [], "message": str(exc)}
+
+
+@router.post("/calendar-outcome")
+async def upsert_calendar_outcome(payload: dict):
+    """Save or update a ✓/✗ outcome for a released economic event."""
+    import asyncio
+    sb = get_supabase()
+    row = {
+        "event_key":  payload.get("event_key"),
+        "event_name": payload.get("event_name"),
+        "event_date": payload.get("event_date"),
+        "event_type": payload.get("event_type"),
+        "predicted":  payload.get("predicted"),
+        "correct":    payload.get("correct"),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    await asyncio.to_thread(
+        lambda: sb.table("calendar_outcomes").upsert(row, on_conflict="event_key").execute()
+    )
+    await cache_delete("calendar_outcomes")
+    return {"status": "ok"}
+
+
+@router.delete("/calendar-outcome/{event_key}")
+async def delete_calendar_outcome(event_key: str):
+    """Remove a tracked outcome (resets the toggle to unset)."""
+    import asyncio
+    sb = get_supabase()
+    await asyncio.to_thread(
+        lambda: sb.table("calendar_outcomes").delete().eq("event_key", event_key).execute()
+    )
+    await cache_delete("calendar_outcomes")
+    return {"status": "deleted"}
+
+
 @router.get("/event-patterns")
 async def get_event_patterns():
     """Historical XAUUSD reaction stats per macro event type (Supabase event_patterns table)."""
