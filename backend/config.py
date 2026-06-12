@@ -24,10 +24,13 @@ COST_PER_1K_INPUT_DS_REASONER  = 0.00055
 COST_PER_1K_OUTPUT_DS_REASONER = 0.00219
 
 # ── Max tokens per tier ────────────────────────────────────────────────────
-MAX_TOKENS_HAIKU    = 650   # all regular haiku runs — bumped for the 9-field enriched schema (rationale + 3-5 cited key_factors + notable_risk + 4 classification fields); 300 silently truncated JSON for every agent except sentiment_agent
-MAX_TOKENS_SONNET   = 800   # daily deep analysis — bumped to match enriched 9-field schema (was 500, sized for the old short schema)
-MAX_TOKENS_SCENARIO = 1200  # scenario engine (haiku) — 3 scenarios need ~900 tokens
-MAX_TOKENS_SENTIMENT = 650  # sentiment_agent (haiku) — aligned with MAX_TOKENS_HAIKU for the enriched schema
+# deepseek-reasoner uses reasoning_content (chain-of-thought) + content (final answer).
+# Both count toward max_tokens. Reasoning alone can consume 500-1500 tokens, so the
+# old Haiku values (650/800) left zero budget for the final JSON content field.
+MAX_TOKENS_HAIKU    = 3000  # all regular agent runs — reasoning (~1500) + JSON output (~500)
+MAX_TOKENS_SONNET   = 6000  # daily deep analysis — more complex prompts need more reasoning
+MAX_TOKENS_SCENARIO = 6000  # scenario engine — 3 scenarios with narrative need extra room
+MAX_TOKENS_SENTIMENT = 3000  # sentiment_agent — aligned with MAX_TOKENS_HAIKU
 
 # ── Redis TTL for prompt-hash skip cache (= agent cycle time) ─────────────
 CACHE_TTL_FAST     = 30 * 60    # 30 min  — news/geo cycle
