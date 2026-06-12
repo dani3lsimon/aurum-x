@@ -7,7 +7,7 @@ from datetime import datetime
 from config import (
     get_settings, estimate_deepseek_cost,
     MAX_TOKENS_HAIKU, CACHE_TTL_STANDARD,
-    MODEL_SONNET, MAX_TOKENS_SONNET,
+    MODEL_HAIKU, MODEL_SONNET, MAX_TOKENS_SONNET,
     DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_LIGHT, DEEPSEEK_MODEL_HEAVY,
 )
 from services.supabase_service import insert_agent_score
