@@ -277,6 +277,28 @@ async def get_economic_calendar(days: int = 7, debug: bool = False):
         return {"status": "error", "message": str(e), "events": []}
 
 
+@router.get("/event-patterns")
+async def get_event_patterns():
+    """Historical XAUUSD reaction stats per macro event type (Supabase event_patterns table)."""
+    import asyncio
+    cache_key = "event_patterns"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+    try:
+        sb = get_supabase()
+        result = await asyncio.to_thread(
+            lambda: sb.table("event_patterns").select("*").order("event_type").execute()
+        )
+        patterns = result.data or []
+        payload = {"status": "ok", "patterns": patterns}
+        await cache_set(cache_key, payload, ttl_seconds=300)
+        return payload
+    except Exception as exc:
+        logger.error(f"event-patterns fetch error: {exc}")
+        return {"status": "error", "patterns": [], "message": str(exc)}
+
+
 @router.get("/signal-history")
 async def get_signal_history_endpoint(limit: int = 100, timeframe: str | None = None):
     """Full signal journal — every recorded signal and its current outcome."""
