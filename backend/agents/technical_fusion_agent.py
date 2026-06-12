@@ -1,16 +1,14 @@
-# backend/agents/technical_fusion_agent.py — SONNET, fuses deterministic SMC
+# backend/agents/technical_fusion_agent.py — fuses deterministic SMC
 # price-action structure with fundamental agent scores into a single concrete
 # trade thesis (direction, entry zone, invalidation, targets, conviction).
 #
 # Deliberately NOT a BaseAgent subclass: BaseAgent.run() forces the standard
 # score/confidence/rationale schema (AGENT_SYSTEM_PROMPT) and persists into
-# agent_scores — this agent returns a bespoke trade-thesis schema instead, so
-# it follows the same direct-Anthropic-call pattern as scenario_engine.py.
+# agent_scores — this agent returns a bespoke trade-thesis schema instead.
 import httpx
 import json
 import logging
-from config import (get_settings, MAX_TOKENS_SONNET,
-                    DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_HEAVY, estimate_deepseek_cost)
+from config import (get_settings, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_HEAVY, estimate_deepseek_cost)
 from services.redis_service import cache_get, cache_set
 
 logger = logging.getLogger(__name__)
@@ -118,7 +116,6 @@ class TechnicalFusionAgent:
     Trusts the SMC engine's price levels verbatim — never recalculates them."""
 
     agent_name = "technical_fusion"
-    model      = MODEL_SONNET
     cache_ttl  = CACHE_TTL
 
     async def collect_data(self) -> dict:
@@ -309,34 +306,6 @@ Rules:
 - If Kronos is UNPROVEN, treat its direction as a very weak tiebreaker only, not a primary signal. If TRUSTED (≥55% hit rate, n≥20), give it meaningful weight alongside the SMC structure.
 - Score your own confidence honestly. When in doubt, return NO_TRADE with a clear reasoning — do not hallucinate a setup."""
 
-    async def _call_anthropic(self, prompt: str) -> tuple[dict, str]:
-        """Call Claude Sonnet. Returns (result_dict, provider_label)."""
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: client.messages.create(
-                model=self.model,
-                max_tokens=MAX_TOKENS_SONNET,
-                system="You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble.",
-                messages=[{"role": "user", "content": prompt}]
-            )
-        )
-        in_tok  = response.usage.input_tokens
-        out_tok = response.usage.output_tokens
-        cost    = estimate_cost(self.model, in_tok, out_tok)
-        raw     = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"): raw = raw[4:]
-            raw = raw.strip()
-        result = json.loads(raw)
-        logger.info(
-            f"[technical_fusion/anthropic] {result.get('direction')} | "
-            f"quality={result.get('setup_quality')} | prob={result.get('probability')}% | "
-            f"in={in_tok} out={out_tok} cost=${cost:.5f}"
-        )
-        return result, "claude_sonnet"
-
     async def _call_deepseek(self, prompt: str) -> tuple[dict, str]:
         """DeepSeek Reasoner via OpenAI-compatible API."""
         settings = get_settings()
@@ -346,7 +315,7 @@ Rules:
         DS_MODEL = DEEPSEEK_MODEL_HEAVY   # deepseek-reasoner
         payload = {
             "model":      DS_MODEL,
-            "max_tokens": 1200,
+            "max_tokens": 6000,
             "messages": [
                 {"role": "system", "content": "You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble, no explanation before or after the JSON."},
                 {"role": "user",   "content": prompt},
