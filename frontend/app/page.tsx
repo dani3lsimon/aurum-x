@@ -12,9 +12,10 @@ import ShortScoreWidget  from '@/components/dashboard/ShortScoreWidget'
 import MultiTfPanel      from '@/components/dashboard/MultiTfPanel'
 import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 import { SignalJournal } from '@/components/dashboard/SignalJournal'
-import TechnicalPanel    from '@/components/dashboard/TechnicalPanel'
+import TechnicalPanel           from '@/components/dashboard/TechnicalPanel'
+import EconomicCalendarPanel   from '@/components/dashboard/EconomicCalendarPanel'
 
-type TabId = 'live' | 'chart' | 'analysis' | 'journal'
+type TabId = 'live' | 'chart' | 'analysis' | 'journal' | 'calendar'
 
 function ProbBox({ value, label, color, sub }: { value?: number; label: string; color: string; sub: string }) {
   return (
@@ -52,7 +53,7 @@ export default function Page() {
   // Restore persisted tab from localStorage after mount (avoids SSR/CSR mismatch)
   useEffect(() => {
     const saved = window.localStorage.getItem('aurum_tab') as TabId | null
-    if (saved === 'live' || saved === 'chart' || saved === 'analysis' || saved === 'journal') {
+    if (saved === 'live' || saved === 'chart' || saved === 'analysis' || saved === 'journal' || saved === 'calendar') {
       setActiveTab(saved)
     }
   }, [])
@@ -96,6 +97,7 @@ export default function Page() {
     { id: 'chart',    label: '② CHART & AGENTS' },
     { id: 'analysis', label: '③ ANALYSIS' },
     { id: 'journal',  label: '④ TRACK RECORD' },
+    { id: 'calendar', label: '⑤ CALENDAR' },
   ]
 
   return (
@@ -362,6 +364,15 @@ export default function Page() {
       {/* ── Tab 4: TRACK RECORD ──────────────────────────────────────────── */}
       {activeTab === 'journal' && (
         <SignalJournal livePrice={liveGoldPrice || forecast?.gold_price || 0} />
+      )}
+
+      {/* ── Tab 5: ECONOMIC CALENDAR ─────────────────────────────────────── */}
+      {activeTab === 'calendar' && (
+        <div style={{ padding: '12px 16px', flex: 1, overflow: 'auto' }}>
+          <div className="aurum-card" style={{ minWidth: 0 }}>
+            <EconomicCalendarPanel />
+          </div>
+        </div>
       )}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
