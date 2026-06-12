@@ -223,7 +223,7 @@ export default function EconomicCalendarPanel() {
 
   const fetchEvents = async () => {
     try {
-      const data = await fetch(`${BACKEND}/forecast/economic-calendar?days=7`).then(r => r.json())
+      const data = await fetch(`${BACKEND}/forecast/economic-calendar?days=28`).then(r => r.json())
       if (data.status === 'ok') { setEvents(data.events || []); setError(null) }
       else setError(data.message || 'API error')
     } catch (e: any) { setError(e.message) }
@@ -297,10 +297,16 @@ export default function EconomicCalendarPanel() {
   const trackedRight  = outcomeValues.filter(Boolean).length
   const accuracyPct   = trackedTotal > 0 ? Math.round(trackedRight / trackedTotal * 100) : null
 
-  const now     = Date.now()
-  const visible = events
-    .filter(e => new Date(e.date).getTime() >= now - 60_000)
-    .filter(e => filter === 'all' || e.gold_relevant)
+  const now            = Date.now()
+  const startOfTodayMs = new Date(now).setHours(0, 0, 0, 0)
+
+  const allFiltered    = events.filter(e => filter === 'all' || e.gold_relevant)
+  const releasedToday  = allFiltered.filter(e => {
+    const t = new Date(e.date).getTime()
+    return t >= startOfTodayMs && t < now - 60_000
+  })
+  const upcoming       = allFiltered.filter(e => new Date(e.date).getTime() >= now - 60_000)
+  const visible        = [...releasedToday, ...upcoming.slice(0, 10)]
 
   const nextEvent = events.find(e => new Date(e.date).getTime() >= now)
 
@@ -314,7 +320,7 @@ export default function EconomicCalendarPanel() {
             ◆ ECONOMIC CALENDAR
           </span>
           <span style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace' }}>
-            NEXT 7 DAYS · MEDIUM + HIGH IMPACT · LONDON TIME (UTC+1)
+            NEXT 10 EVENTS · MEDIUM + HIGH IMPACT · LONDON TIME (UTC+1)
           </span>
           {accuracyPct !== null && (
             <span style={{
