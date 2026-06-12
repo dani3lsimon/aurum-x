@@ -248,21 +248,29 @@ async def get_kronos_accuracy():
 
 
 @router.get("/economic-calendar")
-async def get_economic_calendar(days: int = 7):
+async def get_economic_calendar(days: int = 7, debug: bool = False):
     """
     Medium + high impact economic events for the next N days (default 7).
     Events that directly move gold (CPI, FOMC, NFP, etc.) are flagged gold_relevant=true.
-    Cached 30 minutes — Finnhub data doesn't change more frequently than this.
+    Add ?debug=true to bypass cache and see fetch diagnostics.
+    Cached 30 minutes.
     """
     cache_key = f"economic_calendar_{days}"
-    cached = await cache_get(cache_key)
-    if cached:
-        return cached
+    if not debug:
+        cached = await cache_get(cache_key)
+        if cached:
+            return cached
     try:
         from services.economic_calendar import fetch_economic_events
-        events = await fetch_economic_events(days_ahead=days)
-        result = {"status": "ok", "events": events, "fetched_at": datetime.utcnow().isoformat()}
-        await cache_set(cache_key, result, ttl_seconds=1800)
+        events, diagnostics = await fetch_economic_events(days_ahead=days)
+        result = {
+            "status":      "ok",
+            "events":      events,
+            "fetched_at":  datetime.utcnow().isoformat(),
+            "diagnostics": diagnostics,
+        }
+        if events:   # only cache if we got something
+            await cache_set(cache_key, result, ttl_seconds=1800)
         return result
     except Exception as e:
         logger.error(f"Economic calendar error: {e}")
