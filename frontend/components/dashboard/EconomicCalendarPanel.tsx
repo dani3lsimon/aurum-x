@@ -308,7 +308,8 @@ export default function EconomicCalendarPanel() {
   const upcoming       = allFiltered.filter(e => new Date(e.date).getTime() >= now - 60_000)
   const visible        = [...releasedToday, ...upcoming.slice(0, 10)]
 
-  const nextEvent = events.find(e => new Date(e.date).getTime() >= now)
+  const filteredEvents = events.filter(e => filter === 'all' || e.gold_relevant)
+  const nextEvent = filteredEvents.find(e => new Date(e.date).getTime() >= now)
 
   return (
     <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '400px' }}>
@@ -511,7 +512,7 @@ function NextEventBanner({ event, tick }: { event: EconomicEvent; tick: number }
       borderRadius: '2px',
       display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
     }}>
-      <span style={{ fontSize: '9px', color: '#4a5068', letterSpacing: '0.14em', whiteSpace: 'nowrap' }}>NEXT EVENT</span>
+      <span style={{ fontSize: '9px', color: '#ff7744', letterSpacing: '0.14em', whiteSpace: 'nowrap', fontWeight: 700 }}>NEXT EVENT</span>
       <span style={{ fontSize: '11px', fontWeight: 700, color: event.gold_relevant ? '#ff7744' : '#e5e7eb', flex: 1, minWidth: '120px' }}>
         {event.gold_relevant && <span style={{ color: '#ffb347', marginRight: '6px' }}>◈</span>}
         {event.event}
