@@ -1,20 +1,18 @@
-import os
+import asyncio
 import logging
-import httpx
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-FINNHUB_BASE = "https://finnhub.io/api/v1"
-
-# Events that directly move gold — used to flag high relevance rows
+# Events that directly move gold — highlighted for traders
 GOLD_MOVERS = {
     "nonfarm payrolls", "cpi", "pce", "fed", "fomc", "interest rate",
     "gdp", "unemployment", "inflation", "ism", "pmi", "retail sales",
-    "jolts", "jobless claims", "treasury", "debt ceiling", "durable goods",
+    "jolts", "jobless claims", "treasury", "durable goods",
     "consumer confidence", "housing starts", "industrial production",
-    "michigan sentiment", "eci", "core", "trade balance",
+    "michigan", "sentiment", "eci", "core", "trade balance",
+    "ats", "average hourly", "labor", "wages",
 }
 
 
@@ -23,49 +21,56 @@ def _is_gold_relevant(event_name: str) -> bool:
     return any(kw in name for kw in GOLD_MOVERS)
 
 
-async def fetch_economic_events(days_ahead: int = 7) -> List[Dict]:
+def _fetch_sync(days_ahead: int) -> List[Dict]:
     """
-    Fetch medium + high impact economic events from Finnhub.
-    Returns list sorted by date ascending; each event has a gold_relevant flag.
-    Cached by the caller — this function always hits the API.
+    Synchronous ForexFactory scrape via the economic-calendar library.
+    Called inside run_in_executor so it never blocks the event loop.
     """
-    api_key = os.getenv("FINNHUB_API_KEY", "")
-    if not api_key:
-        raise ValueError("FINNHUB_API_KEY not set")
+    from economic_calendar import EconomicCalendar
 
-    now  = datetime.now(timezone.utc)
-    end  = now + timedelta(days=days_ahead)
-    params = {
-        "from":  now.strftime("%Y-%m-%d"),
-        "to":    end.strftime("%Y-%m-%d"),
-        "token": api_key,
-    }
+    now = datetime.now(timezone.utc)
+    end = now + timedelta(days=days_ahead)
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(f"{FINNHUB_BASE}/calendar/economic", params=params)
-        resp.raise_for_status()
-        data = resp.json()
+    cal    = EconomicCalendar()
+    events = cal.get_events(now, end)
 
-    events = data.get("economicCalendar", [])
-
-    # Keep only medium and high impact; sort ascending by date
-    filtered = [e for e in events if e.get("impact") in ("medium", "high")]
-    filtered.sort(key=lambda e: e.get("time") or e.get("date") or "")
-
-    # Normalise fields and add gold_relevant flag
     result = []
-    for e in filtered:
+    for e in events:
+        if e.impact.lower() not in ("medium", "high"):
+            continue
+
+        # Combine date + time into a single UTC ISO timestamp
+        try:
+            event_dt = datetime(
+                e.date.year, e.date.month, e.date.day,
+                e.time.hour if e.time else 0,
+                e.time.minute if e.time else 0,
+                tzinfo=timezone.utc,
+            )
+        except Exception:
+            continue
+
         result.append({
-            "date":         e.get("time") or e.get("date"),   # ISO string from Finnhub
-            "country":      e.get("country", ""),
-            "currency":     e.get("currency", ""),
-            "event":        e.get("event", ""),
-            "impact":       e.get("impact", "medium"),
-            "actual":       e.get("actual"),
-            "forecast":     e.get("estimate"),
-            "previous":     e.get("prev"),
-            "gold_relevant": _is_gold_relevant(e.get("event", "")),
+            "date":          event_dt.isoformat(),
+            "country":       e.country  or "",
+            "currency":      e.currency or "",
+            "event":         e.event    or "",
+            "impact":        e.impact.lower(),
+            "actual":        e.actual   if e.actual   not in (None, "") else None,
+            "forecast":      e.forecast if e.forecast not in (None, "") else None,
+            "previous":      e.previous if e.previous not in (None, "") else None,
+            "gold_relevant": _is_gold_relevant(e.event or ""),
         })
 
-    logger.info(f"[economic_calendar] fetched {len(result)} medium/high-impact events")
+    result.sort(key=lambda x: x["date"])
+    logger.info(f"[economic_calendar] scraped {len(result)} medium/high-impact events")
     return result
+
+
+async def fetch_economic_events(days_ahead: int = 7) -> List[Dict]:
+    """
+    Async wrapper — runs the synchronous ForexFactory scrape in a thread pool
+    so it never blocks the FastAPI event loop.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch_sync, days_ahead)
