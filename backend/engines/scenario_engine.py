@@ -1,17 +1,13 @@
 # backend/engines/scenario_engine.py
-# Anthropic SDK — generates 3 probability-weighted gold scenario paths — HAIKU
-import anthropic
+# DeepSeek Reasoner — generates 3 probability-weighted gold scenario paths
+import httpx
 import json
-import asyncio
 import logging
 from services.supabase_service import get_supabase
-from config import get_settings, MODEL_HAIKU, MAX_TOKENS_SCENARIO, estimate_cost
+from config import get_settings, MAX_TOKENS_SCENARIO, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_HEAVY, estimate_deepseek_cost
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-# Anthropic client — ANTHROPIC_API_KEY from environment
-client = anthropic.Anthropic()
 
 SCENARIO_SYSTEM_PROMPT = """Generate a JSON object with key "scenarios" containing exactly 3 scenario objects.
 Each object: label (A/B/C), scenario_name (5-8 words), probability (int, sum=100), gold_target_4h, gold_target_24h, gold_target_1w, gold_target_1m, confidence (0-100), key_drivers (3-5 strings), narrative (2 sentences).
@@ -51,25 +47,39 @@ Create three distinct scenarios covering the most likely paths for gold over the
 Probabilities must sum to exactly 100."""
 
         try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: client.messages.create(
-                    model=MODEL_HAIKU,
-                    max_tokens=MAX_TOKENS_SCENARIO,
-                    system=SCENARIO_SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-            )
-            cost = estimate_cost(MODEL_HAIKU, response.usage.input_tokens, response.usage.output_tokens)
-            logger.info(f"[scenario_engine] tokens in={response.usage.input_tokens} out={response.usage.output_tokens} estimated_cost=${cost:.5f}")
+            payload = {
+                "model": DEEPSEEK_MODEL_HEAVY,
+                "max_tokens": MAX_TOKENS_SCENARIO,
+                "messages": [
+                    {"role": "system", "content": SCENARIO_SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
+                ],
+            }
+            headers = {
+                "Authorization": f"Bearer {settings.deepseek_api_key}",
+                "Content-Type":  "application/json",
+            }
+            async with httpx.AsyncClient(timeout=90) as http:
+                resp = await http.post(f"{DEEPSEEK_BASE_URL}/chat/completions",
+                                       json=payload, headers=headers)
+                resp.raise_for_status()
+                response_data = resp.json()
 
-            raw_text = response.content[0].text.strip()
-            # Strip markdown code fences if present
+            msg      = response_data["choices"][0]["message"]
+            raw_text = (msg.get("content") or msg.get("reasoning_content") or "").strip()
+            usage    = response_data.get("usage", {})
+            cost     = estimate_deepseek_cost(DEEPSEEK_MODEL_HEAVY,
+                                              usage.get("prompt_tokens", 0),
+                                              usage.get("completion_tokens", 0))
+            logger.info(f"[scenario_engine] tokens in={usage.get('prompt_tokens',0)} out={usage.get('completion_tokens',0)} estimated_cost=${cost:.5f}")
+
             if raw_text.startswith("```"):
                 raw_text = raw_text.split("```")[1]
                 if raw_text.startswith("json"):
                     raw_text = raw_text[4:]
+            start = raw_text.find("{"); end = raw_text.rfind("}") + 1
+            if start >= 0 and end > start:
+                raw_text = raw_text[start:end]
             data = json.loads(raw_text.strip())
             scenarios = data.get("scenarios", data if isinstance(data, list) else [])
 

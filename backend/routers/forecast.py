@@ -3,11 +3,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, BackgroundTasks, 
 from services.supabase_service import get_latest_forecast, get_forecast_history, get_latest_agent_scores, get_supabase
 from services.redis_service import cache_get, cache_set, cache_delete
 from services.websocket_manager import ws_manager
-from config import get_settings
+from config import get_settings, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_HEAVY, estimate_deepseek_cost
 from datetime import datetime
 import logging
 import json
-import anthropic
+import httpx
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
 logger = logging.getLogger(__name__)
@@ -125,20 +125,34 @@ Rules:
 Return only the JSON object. No markdown. No preamble."""
 
     try:
-        client   = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model      = "claude-sonnet-4-5",
-            max_tokens = 1500,
-            system     = "You are a senior macro strategist. Write clear, jargon-free intelligence briefs.",
-            messages   = [{"role": "user", "content": prompt}]
-        )
+        payload = {
+            "model": DEEPSEEK_MODEL_HEAVY,
+            "max_tokens": 1500,
+            "messages": [
+                {"role": "system", "content": "You are a senior macro strategist. Write clear, jargon-free intelligence briefs."},
+                {"role": "user",   "content": prompt},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.deepseek_api_key}",
+            "Content-Type":  "application/json",
+        }
+        async with httpx.AsyncClient(timeout=90) as http:
+            resp = await http.post(f"{DEEPSEEK_BASE_URL}/chat/completions",
+                                   json=payload, headers=headers)
+            resp.raise_for_status()
+            response_data = resp.json()
 
-        raw_text = response.content[0].text.strip()
+        msg      = response_data["choices"][0]["message"]
+        raw_text = (msg.get("content") or msg.get("reasoning_content") or "").strip()
         if raw_text.startswith("```"):
             raw_text = raw_text.split("```")[1]
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:]
             raw_text = raw_text.strip()
+        start = raw_text.find("{"); end = raw_text.rfind("}") + 1
+        if start >= 0 and end > start:
+            raw_text = raw_text[start:end]
 
         brief = json.loads(raw_text)
         brief["generated_at"]  = datetime.utcnow().isoformat()

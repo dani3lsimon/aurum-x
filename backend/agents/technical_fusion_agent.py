@@ -6,18 +6,15 @@
 # score/confidence/rationale schema (AGENT_SYSTEM_PROMPT) and persists into
 # agent_scores — this agent returns a bespoke trade-thesis schema instead, so
 # it follows the same direct-Anthropic-call pattern as scenario_engine.py.
-import anthropic
 import httpx
 import json
-import asyncio
 import logging
-from config import (get_settings, MODEL_SONNET, MAX_TOKENS_SONNET, estimate_cost,
+from config import (get_settings, MAX_TOKENS_SONNET,
                     DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_HEAVY, estimate_deepseek_cost)
 from services.redis_service import cache_get, cache_set
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-client   = anthropic.Anthropic()
 
 CACHE_KEY = "technical_fusion_signal"
 CACHE_TTL = 60   # 1 min — fresh enough for live trading
@@ -341,18 +338,15 @@ Rules:
         return result, "claude_sonnet"
 
     async def _call_deepseek(self, prompt: str) -> tuple[dict, str]:
-        """DeepSeek fallback via OpenAI-compatible API.
-        Uses deepseek-chat (not reasoner) — chat returns clean JSON content;
-        reasoner puts its answer in reasoning_content and may leave content empty.
-        """
+        """DeepSeek Reasoner via OpenAI-compatible API."""
         settings = get_settings()
         if not settings.deepseek_api_key:
             raise ValueError("DEEPSEEK_API_KEY not set")
 
-        DS_MODEL = "deepseek-chat"   # V3 — fast, JSON-reliable, no think-tag issues
+        DS_MODEL = DEEPSEEK_MODEL_HEAVY   # deepseek-reasoner
         payload = {
             "model":      DS_MODEL,
-            "max_tokens": 1200,      # larger budget — fusion JSON is ~600-800 tokens
+            "max_tokens": 1200,
             "messages": [
                 {"role": "system", "content": "You are a precise, honest trading analyst. Respond with raw JSON only — no markdown, no preamble, no explanation before or after the JSON."},
                 {"role": "user",   "content": prompt},
@@ -362,7 +356,7 @@ Rules:
             "Authorization": f"Bearer {settings.deepseek_api_key}",
             "Content-Type":  "application/json",
         }
-        async with httpx.AsyncClient(timeout=60) as http:
+        async with httpx.AsyncClient(timeout=90) as http:
             resp = await http.post(f"{DEEPSEEK_BASE_URL}/chat/completions",
                                    json=payload, headers=headers)
             resp.raise_for_status()
@@ -393,11 +387,11 @@ Rules:
         cost    = estimate_deepseek_cost(DS_MODEL, in_tok, out_tok)
         result  = json.loads(raw)
         logger.info(
-            f"[technical_fusion/deepseek-chat] {result.get('direction')} | "
+            f"[technical_fusion/deepseek-reasoner] {result.get('direction')} | "
             f"quality={result.get('setup_quality')} | prob={result.get('probability')}% | "
             f"in={in_tok} out={out_tok} cost=${cost:.5f}"
         )
-        return result, "deepseek_chat"
+        return result, "deepseek_reasoner"
 
     async def run(self) -> dict:
         cached = await cache_get(CACHE_KEY)
@@ -416,17 +410,12 @@ Rules:
         result     = None
         provider   = None
 
-        # Try Anthropic first, fall back to DeepSeek on any error
         try:
-            result, provider = await self._call_anthropic(prompt)
-        except Exception as anthropic_err:
-            logger.warning(f"[technical_fusion] Anthropic failed ({anthropic_err}) — retrying with DeepSeek")
-            try:
-                result, provider = await self._call_deepseek(prompt)
-            except Exception as ds_err:
-                logger.error(f"[technical_fusion] Both providers failed. Anthropic: {anthropic_err} | DeepSeek: {ds_err}")
-                return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
-                        "reasoning": f"Both providers failed: {ds_err}", "error": str(ds_err)}
+            result, provider = await self._call_deepseek(prompt)
+        except Exception as ds_err:
+            logger.error(f"[technical_fusion] DeepSeek failed: {ds_err}")
+            return {"direction": "NEUTRAL", "probability": 0, "setup_quality": "NO_TRADE",
+                    "reasoning": f"DeepSeek error: {ds_err}", "error": str(ds_err)}
 
         # ── Sanity checks ─────────────────────────────────────────────────────
         # 1. Entry zone must be near the live price (catches stale / hallucinated entries)

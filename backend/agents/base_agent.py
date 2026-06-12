@@ -1,14 +1,12 @@
 # backend/agents/base_agent.py
 from abc import ABC, abstractmethod
-import anthropic
 import httpx
 import json
-import asyncio
 import logging
 from datetime import datetime
 from config import (
-    get_settings, estimate_cost, estimate_deepseek_cost,
-    MODEL_HAIKU, MAX_TOKENS_HAIKU, CACHE_TTL_STANDARD,
+    get_settings, estimate_deepseek_cost,
+    MAX_TOKENS_HAIKU, CACHE_TTL_STANDARD,
     MODEL_SONNET, MAX_TOKENS_SONNET,
     DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_LIGHT, DEEPSEEK_MODEL_HEAVY,
 )
@@ -18,8 +16,6 @@ from services.redis_service import cache_get, cache_set
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-client = anthropic.Anthropic()
 
 AGENT_SYSTEM_PROMPT = """You are an institutional macro analyst specialising in XAUUSD (Gold).
 You MUST respond with a valid JSON object containing ALL of these exact fields — no exceptions:
@@ -107,17 +103,22 @@ class BaseAgent(ABC):
             "Authorization": f"Bearer {settings.deepseek_api_key}",
             "Content-Type":  "application/json",
         }
-        async with httpx.AsyncClient(timeout=60) as http:
+        async with httpx.AsyncClient(timeout=90) as http:
             resp = await http.post(f"{DEEPSEEK_BASE_URL}/chat/completions",
                                    json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
-        raw = data["choices"][0]["message"]["content"].strip()
+        msg = data["choices"][0]["message"]
+        # deepseek-reasoner puts final answer in content; chain-of-thought in reasoning_content
+        raw = (msg.get("content") or msg.get("reasoning_content") or "").strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
             raw = raw.strip()
+        start = raw.find("{"); end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            raw = raw[start:end]
         usage = data.get("usage", {})
         return json.loads(raw), usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
 
@@ -147,59 +148,27 @@ class BaseAgent(ABC):
             if await cache_get(skip_key):
                 cached_score = await cache_get(last_score_key)
                 if cached_score:
-                    logger.info(f"[{self.name}] PROMPT UNCHANGED — skip Claude ($0.00)")
+                    logger.info(f"[{self.name}] PROMPT UNCHANGED — skip DeepSeek ($0.00)")
                     return cached_score
 
-            # ── Try Anthropic ──────────────────────────────────────────
+            # ── Call DeepSeek Reasoner ─────────────────────────────────
             result   = None
             in_tok   = out_tok = 0
-            provider = "anthropic"
+            provider = "deepseek_reasoner"
 
             try:
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: client.messages.create(
-                        model=self.model,
-                        max_tokens=self.max_tokens,
-                        system=AGENT_SYSTEM_PROMPT,
-                        messages=[{"role": "user", "content": prompt}]
-                    )
-                )
-                in_tok  = response.usage.input_tokens
-                out_tok = response.usage.output_tokens
-                cost    = estimate_cost(self.model, in_tok, out_tok)
-                result  = json.loads(self._strip_fences(response.content[0].text))
-
+                result, in_tok, out_tok = await self._call_deepseek(prompt)
+                cost = estimate_deepseek_cost(self.ds_model, in_tok, out_tok)
                 logger.info(
-                    f"[{self.name}] provider=anthropic "
-                    f"model={self.model} "
+                    f"[{self.name}] provider=deepseek_reasoner "
+                    f"model={self.ds_model} "
                     f"tokens in={in_tok} out={out_tok} "
                     f"estimated_cost=${cost:.5f}"
                 )
-
-            except Exception as anthropic_err:
-                logger.warning(
-                    f"[{self.name}] Anthropic failed ({anthropic_err!r}) "
-                    f"— retrying with DeepSeek ({self.ds_model})"
-                )
-                provider = "deepseek_fallback"
-                try:
-                    result, in_tok, out_tok = await self._call_deepseek(prompt)
-                    cost = estimate_deepseek_cost(self.ds_model, in_tok, out_tok)
-                    logger.info(
-                        f"[{self.name}] provider=deepseek_fallback "
-                        f"model={self.ds_model} "
-                        f"tokens in={in_tok} out={out_tok} "
-                        f"estimated_cost=${cost:.5f}"
-                    )
-                except Exception as ds_err:
-                    logger.error(
-                        f"[{self.name}] Both providers failed — "
-                        f"Anthropic: {anthropic_err} | DeepSeek: {ds_err}"
-                    )
-                    return {"agent_name": self.name, "score": 0, "confidence": 0,
-                            "rationale": f"Both providers failed."}
+            except Exception as ds_err:
+                logger.error(f"[{self.name}] DeepSeek failed: {ds_err}")
+                return {"agent_name": self.name, "score": 0, "confidence": 0,
+                        "rationale": f"DeepSeek error: {ds_err}"}
 
             # ── Build score record ─────────────────────────────────────
             self.last_score      = float(result.get("score", 0))
