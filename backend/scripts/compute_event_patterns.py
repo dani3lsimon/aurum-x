@@ -188,75 +188,97 @@ def analyze_event(event_dt: datetime, df: pd.DataFrame) -> Optional[dict]:
     }
 
 
+# ── Stats helper ─────────────────────────────────────────────────────────
+
+def _compute_stats(results: list[dict]) -> dict:
+    """Aggregate pre/post stats from a list of analyze_event() results."""
+    st = {
+        "total": 0,
+        "pre15_valid": 0, "pre15_opp": 0,
+        "pre1h_valid": 0, "pre1h_opp": 0,
+        "post15": [], "post30": [], "post1h": [],
+    }
+    for res in results:
+        st["total"] += 1
+        if res["pre_15m_dir"] != "flat" and res["react_dir"] != "flat":
+            st["pre15_valid"] += 1
+            if res["pre_15m_dir"] != res["react_dir"]:
+                st["pre15_opp"] += 1
+        if res["pre_1h_dir"] != "flat" and res["react_dir"] != "flat":
+            st["pre1h_valid"] += 1
+            if res["pre_1h_dir"] != res["react_dir"]:
+                st["pre1h_opp"] += 1
+        for key, bucket in (("post_15m", "post15"), ("post_30m", "post30"), ("post_1h", "post1h")):
+            if res[key] is not None:
+                st[bucket].append(abs(res[key]))
+    return st
+
+
+def _stats_to_row(st: dict) -> dict:
+    return {
+        "total_events":         st["total"],
+        "pre_15m_opposite_pct": round(st["pre15_opp"] / st["pre15_valid"] * 100, 1) if st["pre15_valid"] else None,
+        "pre_1h_opposite_pct":  round(st["pre1h_opp"] / st["pre1h_valid"] * 100, 1) if st["pre1h_valid"] else None,
+        "avg_post_15m_abs":     round(float(np.mean(st["post15"])), 4) if st["post15"] else None,
+        "avg_post_30m_abs":     round(float(np.mean(st["post30"])), 4) if st["post30"] else None,
+        "avg_post_1h_abs":      round(float(np.mean(st["post1h"])), 4) if st["post1h"] else None,
+    }
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
+
+RECENT_N = 4   # how many most-recent releases to track separately
 
 def main():
     end_dt   = datetime.now(timezone.utc)
     start_dt = end_dt - timedelta(days=LOOKBACK_DAYS)
 
-    type_stats: dict = defaultdict(lambda: {
-        "total":         0,
-        "pre15_valid":   0, "pre15_opp": 0,
-        "pre1h_valid":   0, "pre1h_opp": 0,
-        "post15_list":   [],
-        "post30_list":   [],
-        "post1h_list":   [],
-    })
+    # {label: [(event_dt, result), ...]} sorted ascending by date
+    type_results: dict[str, list[tuple]] = defaultdict(list)
 
     for label, _, release_id in EVENT_TYPE_RULES:
-        dates = get_fred_dates(release_id, start_dt, end_dt)
+        dates = sorted(get_fred_dates(release_id, start_dt, end_dt))
         log.info("%-20s  %d historical release dates (FRED id=%d)", label, len(dates), release_id)
 
         for event_dt in dates:
             from_t = event_dt - timedelta(hours=WINDOW_BEFORE_H)
             to_t   = event_dt + timedelta(hours=WINDOW_AFTER_H)
-
             df = get_candles(from_t, to_t)
             time.sleep(SLEEP_S)
-
             if df is None:
-                log.debug("  skip %s — no candles", event_dt.date())
                 continue
-
             res = analyze_event(event_dt, df)
-            if res is None:
-                continue
-
-            st = type_stats[label]
-            st["total"] += 1
-
-            if res["pre_15m_dir"] != "flat" and res["react_dir"] != "flat":
-                st["pre15_valid"] += 1
-                if res["pre_15m_dir"] != res["react_dir"]:
-                    st["pre15_opp"] += 1
-
-            if res["pre_1h_dir"] != "flat" and res["react_dir"] != "flat":
-                st["pre1h_valid"] += 1
-                if res["pre_1h_dir"] != res["react_dir"]:
-                    st["pre1h_opp"] += 1
-
-            for key, bucket in (("post_15m", "post15_list"), ("post_30m", "post30_list"), ("post_1h", "post1h_list")):
-                if res[key] is not None:
-                    st[bucket].append(abs(res[key]))
+            if res:
+                type_results[label].append((event_dt, res))
 
     # Upsert into Supabase
-    for etype, st in type_stats.items():
-        if st["total"] == 0:
+    for etype, dated_results in type_results.items():
+        if not dated_results:
             continue
+
+        all_res    = [r for _, r in dated_results]
+        recent_res = [r for _, r in dated_results[-RECENT_N:]]
+
+        full   = _stats_to_row(_compute_stats(all_res))
+        recent = _stats_to_row(_compute_stats(recent_res))
+
         row = {
-            "event_type":           etype,
-            "total_events":         st["total"],
-            "pre_15m_opposite_pct": round(st["pre15_opp"] / st["pre15_valid"] * 100, 1) if st["pre15_valid"] else None,
-            "pre_1h_opposite_pct":  round(st["pre1h_opp"] / st["pre1h_valid"] * 100, 1) if st["pre1h_valid"] else None,
-            "avg_post_15m_abs":     round(float(np.mean(st["post15_list"])), 4) if st["post15_list"] else None,
-            "avg_post_30m_abs":     round(float(np.mean(st["post30_list"])), 4) if st["post30_list"] else None,
-            "avg_post_1h_abs":      round(float(np.mean(st["post1h_list"])),  4) if st["post1h_list"] else None,
-            "surprise_align_pct":   None,   # requires consensus forecasts (not available free)
-            "last_updated":         datetime.now(timezone.utc).isoformat(),
+            "event_type":              etype,
+            **full,
+            "surprise_align_pct":      None,
+            "recent_events":           len(recent_res),
+            "recent_pre_15m_opp_pct":  recent["pre_15m_opposite_pct"],
+            "recent_pre_1h_opp_pct":   recent["pre_1h_opposite_pct"],
+            "recent_avg_post_15m_abs": recent["avg_post_15m_abs"],
+            "recent_avg_post_30m_abs": recent["avg_post_30m_abs"],
+            "recent_avg_post_1h_abs":  recent["avg_post_1h_abs"],
+            "last_updated":            datetime.now(timezone.utc).isoformat(),
         }
         supabase.table("event_patterns").upsert(row, on_conflict="event_type").execute()
-        log.info("  ✓ %-20s  n=%d  pre15_opp=%.0f%%", etype, st["total"],
-                 row["pre_15m_opposite_pct"] or 0)
+        log.info("  ✓ %-20s  n=%d  pre15=%.0f%%  recent4_pre15=%.0f%%",
+                 etype, full["total_events"],
+                 full["pre_15m_opposite_pct"] or 0,
+                 recent["pre_15m_opposite_pct"] or 0)
 
 
 if __name__ == "__main__":

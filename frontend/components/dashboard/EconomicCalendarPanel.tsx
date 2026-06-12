@@ -17,15 +17,21 @@ interface EconomicEvent {
 }
 
 interface EventPattern {
-  event_type:           string
-  total_events:         number
-  pre_15m_opposite_pct: number | null
-  pre_1h_opposite_pct:  number | null
-  avg_post_15m_abs:     number | null
-  avg_post_30m_abs:     number | null
-  avg_post_1h_abs:      number | null
-  surprise_align_pct:   number | null
-  last_updated:         string
+  event_type:              string
+  total_events:            number
+  pre_15m_opposite_pct:    number | null
+  pre_1h_opposite_pct:     number | null
+  avg_post_15m_abs:        number | null
+  avg_post_30m_abs:        number | null
+  avg_post_1h_abs:         number | null
+  surprise_align_pct:      number | null
+  recent_events:           number | null
+  recent_pre_15m_opp_pct:  number | null
+  recent_pre_1h_opp_pct:   number | null
+  recent_avg_post_15m_abs: number | null
+  recent_avg_post_30m_abs: number | null
+  recent_avg_post_1h_abs:  number | null
+  last_updated:            string
 }
 
 const IMPACT_COLOR: Record<string, string> = {
@@ -116,25 +122,61 @@ function PatternBadge({ pattern }: { pattern: EventPattern | undefined }) {
   )
 }
 
+function pct(v: number | null | undefined) {
+  return v != null ? `${v.toFixed(1)}%` : '—'
+}
+function move(v: number | null | undefined) {
+  return v != null ? `${v.toFixed(2)}%` : '—'
+}
+function delta(full: number | null | undefined, recent: number | null | undefined): { text: string; color: string } | null {
+  if (full == null || recent == null) return null
+  const d = recent - full
+  if (Math.abs(d) < 1) return null
+  return { text: `${d > 0 ? '▲' : '▼'}${Math.abs(d).toFixed(1)}`, color: d > 0 ? '#22c55e' : '#ef4444' }
+}
+
 function PatternDetail({ pattern }: { pattern: EventPattern }) {
-  const rows: Array<[string, string]> = [
-    ['SAMPLE SIZE',  `${pattern.total_events} events`],
-    ['PRE-15m FADES', pattern.pre_15m_opposite_pct !== null ? `${pattern.pre_15m_opposite_pct.toFixed(1)}%` : '—'],
-    ['PRE-1h FADES',  pattern.pre_1h_opposite_pct  !== null ? `${pattern.pre_1h_opposite_pct.toFixed(1)}%`  : '—'],
-    ['AVG MOVE 15m',  pattern.avg_post_15m_abs      !== null ? `${pattern.avg_post_15m_abs.toFixed(2)}%`     : '—'],
-    ['AVG MOVE 30m',  pattern.avg_post_30m_abs      !== null ? `${pattern.avg_post_30m_abs.toFixed(2)}%`     : '—'],
-    ['AVG MOVE 1h',   pattern.avg_post_1h_abs       !== null ? `${pattern.avg_post_1h_abs.toFixed(2)}%`      : '—'],
+  const hasRecent = (pattern.recent_events ?? 0) >= 2
+
+  const rows: Array<{ label: string; full: string; recent: string | null; d: ReturnType<typeof delta> }> = [
+    { label: 'PRE-15m FADES', full: pct(pattern.pre_15m_opposite_pct), recent: hasRecent ? pct(pattern.recent_pre_15m_opp_pct) : null, d: delta(pattern.pre_15m_opposite_pct, pattern.recent_pre_15m_opp_pct) },
+    { label: 'PRE-1h FADES',  full: pct(pattern.pre_1h_opposite_pct),  recent: hasRecent ? pct(pattern.recent_pre_1h_opp_pct)  : null, d: delta(pattern.pre_1h_opposite_pct,  pattern.recent_pre_1h_opp_pct) },
+    { label: 'AVG MOVE 15m',  full: move(pattern.avg_post_15m_abs),     recent: hasRecent ? move(pattern.recent_avg_post_15m_abs) : null, d: delta(pattern.avg_post_15m_abs, pattern.recent_avg_post_15m_abs) },
+    { label: 'AVG MOVE 30m',  full: move(pattern.avg_post_30m_abs),     recent: hasRecent ? move(pattern.recent_avg_post_30m_abs) : null, d: delta(pattern.avg_post_30m_abs, pattern.recent_avg_post_30m_abs) },
+    { label: 'AVG MOVE 1h',   full: move(pattern.avg_post_1h_abs),      recent: hasRecent ? move(pattern.recent_avg_post_1h_abs)  : null, d: delta(pattern.avg_post_1h_abs,  pattern.recent_avg_post_1h_abs) },
   ]
+
+  const colStyle: React.CSSProperties = { padding: '3px 10px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '9px', fontFamily: 'JetBrains Mono, monospace' }
+  const hdStyle:  React.CSSProperties = { ...colStyle, color: '#4a5068', letterSpacing: '0.1em', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '5px' }
+
   return (
-    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', padding: '2px 0' }}>
-      {rows.map(([k, v]) => (
-        <div key={k} style={{ fontSize: '9px', letterSpacing: '0.1em', fontFamily: 'JetBrains Mono, monospace' }}>
-          <span style={{ color: '#4a5068' }}>{k}: </span>
-          <span style={{ color: '#e5e7eb', fontWeight: 600 }}>{v}</span>
-        </div>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <table style={{ borderCollapse: 'collapse', fontSize: '9px', fontFamily: 'JetBrains Mono, monospace' }}>
+        <thead>
+          <tr>
+            <th style={{ ...hdStyle, textAlign: 'left', paddingLeft: 0 }}> </th>
+            <th style={hdStyle}>FULL SAMPLE ({pattern.total_events})</th>
+            {hasRecent && <th style={{ ...hdStyle, color: '#ff7744' }}>LAST {pattern.recent_events}</th>}
+            {hasRecent && <th style={{ ...hdStyle, color: '#4a5068' }}>ΔCHANGE</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ label, full, recent, d }) => (
+            <tr key={label} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+              <td style={{ ...colStyle, textAlign: 'left', paddingLeft: 0, color: '#4a5068', letterSpacing: '0.08em' }}>{label}</td>
+              <td style={{ ...colStyle, color: '#9ca3af' }}>{full}</td>
+              {hasRecent && <td style={{ ...colStyle, color: '#e5e7eb', fontWeight: 600 }}>{recent}</td>}
+              {hasRecent && (
+                <td style={{ ...colStyle, color: d?.color ?? '#2a2d3a', fontWeight: 600 }}>
+                  {d?.text ?? '—'}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {pattern.last_updated && (
-        <div style={{ fontSize: '9px', color: '#2a2d3a', letterSpacing: '0.08em', marginLeft: 'auto' }}>
+        <div style={{ fontSize: '8px', color: '#2a2d3a', letterSpacing: '0.08em' }}>
           updated {pattern.last_updated.slice(0, 10)}
         </div>
       )}
