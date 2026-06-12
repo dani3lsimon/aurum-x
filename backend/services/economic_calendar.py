@@ -45,7 +45,10 @@ FRED_RELEASES = {
 }
 
 
-def _is_gold_relevant(title: str) -> bool:
+def _is_gold_relevant(title: str, currency: str = "") -> bool:
+    # All USD events move XAUUSD directly; EUR/USD is the largest DXY component
+    if currency.upper() in ("USD", "EUR"):
+        return True
     t = title.lower()
     return any(kw in t for kw in GOLD_MOVERS)
 
@@ -103,7 +106,7 @@ async def _fetch_forexfactory(today: datetime, cutoff: datetime) -> Tuple[List[D
                 "actual":        _clean(e.get("actual")),
                 "forecast":      _clean(e.get("forecast")),
                 "previous":      _clean(e.get("previous")),
-                "gold_relevant": _is_gold_relevant(title),
+                "gold_relevant": _is_gold_relevant(title, e.get("country", "")),
                 "source":        "forexfactory",
             })
 

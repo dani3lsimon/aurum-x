@@ -89,7 +89,7 @@ function fmtLondon(iso: string): string {
 
 function PatternBadge({ pattern }: { pattern: EventPattern | undefined }) {
   if (!pattern || pattern.total_events < 5 || pattern.pre_15m_opposite_pct === null) {
-    return <span style={{ color: '#2a2d3a', fontSize: '10px' }}>—</span>
+    return <span style={{ color: '#3a3f52', fontSize: '10px' }}>—</span>
   }
   const pct = pattern.pre_15m_opposite_pct
   let label: string, color: string
