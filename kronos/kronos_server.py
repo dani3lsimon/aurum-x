@@ -67,6 +67,19 @@ def forecast(req: ForecastRequest, authorization: str = Header(None)):
 
     cur    = float(df['close'].iloc[-1])
     fc     = float(pred['close'].iloc[-1])
+
+    # Full per-bar forecast candles for chart rendering
+    pred_candles = [
+        {
+            'time':  str(future[i]),
+            'open':  round(float(pred['open'].iloc[i]),  2),
+            'high':  round(float(pred['high'].iloc[i]),  2),
+            'low':   round(float(pred['low'].iloc[i]),   2),
+            'close': round(float(pred['close'].iloc[i]), 2),
+        }
+        for i in range(len(future))
+    ]
+
     result = {
         'current_price':     round(cur, 2),
         'predicted_close':   round(fc, 2),
@@ -78,6 +91,7 @@ def forecast(req: ForecastRequest, authorization: str = Header(None)):
         'pred_len':          req.pred_len,
         'freq':              req.freq,
         'target_time':       str(future[-1]),
+        'pred_candles':      pred_candles,
     }
     logger.info(f"Forecast: {req.freq} {result['direction']} {result['expected_move_pts']:+.2f} pts")
     return result

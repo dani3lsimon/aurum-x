@@ -105,7 +105,8 @@ class OandaCollector:
         Cache: 60s for M1, 5m for M5/M15, 1h for H1/D.
         """
         ttl_map   = {"M1": 60, "M5": 300, "M15": 300, "H1": 3600, "D": 3600}
-        ttl       = ttl_map.get(granularity, 120)
+        # Large requests (Kronos context) use 5-min TTL so they stay fresh
+        ttl       = 300 if count > 200 else ttl_map.get(granularity, 120)
         cache_key = f"oanda_candles_{instrument}_{granularity}_{count}"
         cached    = await cache_get(cache_key)
         if cached:

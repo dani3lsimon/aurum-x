@@ -100,6 +100,10 @@ class AurumScheduler:
         self.scheduler.add_job(self._check_kronos_predictions, IntervalTrigger(minutes=15),
                                id="kronos_accuracy_check", replace_existing=True)
 
+        # Kronos forecast — fetch 2048 candles per TF and run inference every 5 min
+        self.scheduler.add_job(self._run_kronos_forecast, IntervalTrigger(minutes=5),
+                               id="kronos_forecast", replace_existing=True)
+
         self.scheduler.start()
         logger.info("AURUM-X Scheduler started — cost-optimised $1/day schedule active.")
 
@@ -373,6 +377,39 @@ class AurumScheduler:
             await TechnicalFusionAgent().run()
         except Exception as e:
             logger.error(f"Technical fusion scheduler error: {e}")
+
+    async def _run_kronos_forecast(self):
+        """Fetch 2048 OANDA candles per timeframe and run Kronos inference.
+        Populates kronos_{tf} Redis cache keys read by /forecast/kronos/latest."""
+        from collectors.oanda_collector import OandaCollector
+        from services.kronos_client import get_kronos_forecast
+        from services.redis_service import cache_delete
+
+        oanda = OandaCollector()
+        # tf_key → (OANDA granularity, pred_len)
+        # 2048 M15 = 21 days of 15-min bars, predict 8 bars = 2h ahead
+        # 2048 H1  = 85 days of hourly bars,  predict 12 bars = 12h ahead
+        # 2048 H4  = 341 days of 4h bars,     predict 6 bars  = 24h ahead
+        TF_MAP = {
+            '15min': ('M15', 8),
+            '1h':    ('H1',  12),
+            '4h':    ('H4',  6),
+        }
+        for tf_key, (granularity, pred_len) in TF_MAP.items():
+            try:
+                candles = await oanda.get_candles('XAU_USD', granularity, 2048)
+                if len(candles) < 32:
+                    logger.warning(f'Kronos {tf_key}: only {len(candles)} candles, skipping')
+                    continue
+                await cache_delete(f'kronos_{tf_key}')
+                result = await get_kronos_forecast(candles, tf_key, pred_len)
+                logger.info(
+                    f'Kronos {tf_key}: {result.get("direction", "?")} '
+                    f'{result.get("expected_move_pts", "?")} pts | '
+                    f'{len(candles)} bars in'
+                )
+            except Exception as e:
+                logger.error(f'Kronos forecast {tf_key} failed: {e}')
 
     async def _run_fmp_calendar_sync(self):
         try:

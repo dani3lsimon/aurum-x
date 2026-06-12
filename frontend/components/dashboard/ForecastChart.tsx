@@ -35,8 +35,15 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
   const [dims, setDims] = useState({ w: 0, h: 0 })
   const animFrameRef = useRef<number | undefined>(undefined)
 
-  // ── Live price — polled every 30s from /market/orderflow (real OANDA tick) ──
+  // ── Live price — tick-level from cTrader, falls back to 30s OANDA poll ─────
   const [livePrice, setLivePrice] = useState<number>(forecast?.gold_price ?? 0)
+
+  // Tick-level update: sync livePrice from lastTickPrice on every tick
+  useEffect(() => {
+    if (lastTickPrice && lastTickPrice > 500) setLivePrice(lastTickPrice)
+  }, [lastTickPrice])
+
+  // Fallback: poll orderflow every 30s for when cTrader is disconnected
   useEffect(() => {
     const fetchPrice = async () => {
       try {
@@ -47,6 +54,20 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
     }
     fetchPrice()
     const interval = setInterval(fetchPrice, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // ── Kronos projected candles — fetched every 5 min ──────────────────────────
+  const [kronosData, setKronosData] = useState<Record<string, any>>({})
+  useEffect(() => {
+    const fetchKronos = async () => {
+      try {
+        const r = await fetch(`${BACKEND}/forecast/kronos/latest`)
+        setKronosData(await r.json())
+      } catch {}
+    }
+    fetchKronos()
+    const interval = setInterval(fetchKronos, 300_000)
     return () => clearInterval(interval)
   }, [])
 
@@ -347,6 +368,90 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
         ctx.fillText(b.label, x0 + 3, yHi + 9)
       })
 
+      // ── Kronos hollow projected candles (right forecast zone) ───────────────
+      const kronosTfKey = { '15m': '15min', '1h': '1h', '4h': '4h', '1d': '4h' }[chartTf] || '1h'
+      const kfc = kronosData?.[kronosTfKey]
+      if (kfc?.available && kfc.predicted_close && kfc.predicted_high && kfc.predicted_low) {
+        const kClose  = kfc.predicted_close as number
+        const kUp     = kClose >= lastClose
+        const kColor  = kUp ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.75)'
+        const kColorD = kUp ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'
+
+        // Use real Kronos pred_candles when available; fall back to linear interpolation
+        type KBar = { open: number; high: number; low: number; close: number }
+        let displayBars: KBar[]
+        const rawPred = kfc.pred_candles as KBar[] | undefined
+        if (rawPred && rawPred.length > 0) {
+          // Pick up to 6 evenly-spaced candles from the full prediction
+          const N_MAX  = 6
+          const step   = Math.max(1, Math.floor(rawPred.length / N_MAX))
+          displayBars  = []
+          for (let i = 0; i < rawPred.length && displayBars.length < N_MAX; i += step)
+            displayBars.push(rawPred[i])
+        } else {
+          // Legacy interpolation fallback (no pred_candles field)
+          const kHigh = kfc.predicted_high as number
+          const kLow  = kfc.predicted_low  as number
+          const N = 4
+          displayBars = Array.from({ length: N }, (_, i) => {
+            const p0 = i / N, p1 = (i + 1) / N
+            const o = lastClose + (kClose - lastClose) * p0
+            const c = lastClose + (kClose - lastClose) * p1
+            return {
+              open:  o,
+              close: c,
+              high:  Math.max(o, c) + (kHigh - Math.max(lastClose, kClose)) * p1,
+              low:   Math.min(o, c) - (Math.min(lastClose, kClose) - kLow) * p1,
+            }
+          })
+        }
+
+        const N      = displayBars.length
+        const slotW  = bandSpan / (N + 1)
+        const bodyW2 = Math.max(3, slotW * 0.55)
+
+        for (let i = 0; i < N; i++) {
+          const b    = displayBars[i]
+          const cx   = bandX0 + slotW * (i + 0.5)
+          const yO   = toY(b.open)
+          const yC   = toY(b.close)
+          const yH   = toY(b.high)
+          const yL   = toY(b.low)
+          const top  = Math.min(yO, yC)
+          const bH   = Math.max(1, Math.abs(yC - yO))
+          const barUp  = b.close >= b.open
+          const barCol  = barUp ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.75)'
+          const barColD = barUp ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'
+
+          ctx.save()
+          ctx.globalAlpha = 0.45 + 0.55 * ((i + 1) / N)  // fade in left→right
+
+          ctx.strokeStyle = barCol
+          ctx.lineWidth   = 1
+          ctx.beginPath(); ctx.moveTo(cx, yH); ctx.lineTo(cx, yL); ctx.stroke()
+
+          ctx.strokeStyle = barCol
+          ctx.lineWidth   = 1.2
+          ctx.strokeRect(cx - bodyW2 / 2, top, bodyW2, bH)
+
+          ctx.fillStyle = barColD
+          ctx.fillRect(cx - bodyW2 / 2, top, bodyW2, bH)
+
+          ctx.restore()
+        }
+
+        // Label above first hollow candle
+        ctx.save()
+        ctx.font      = '8px JetBrains Mono, monospace'
+        ctx.fillStyle = kUp ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.9)'
+        ctx.textAlign = 'center'
+        ctx.fillText(`◈ KRONOS ${kUp ? '▲' : '▼'}`, bandX0 + slotW * 1.5, pad.top + 10)
+        ctx.fillStyle = 'rgba(107,116,148,0.7)'
+        ctx.fillText(`${kfc.expected_move_pts > 0 ? '+' : ''}${kfc.expected_move_pts} pts`, bandX0 + slotW * 1.5, pad.top + 20)
+        ctx.textAlign = 'left'
+        ctx.restore()
+      }
+
       // ── Forecast midline — dashed orange projection from current price ───
       if (forecast) {
         const momentum = forecast.forecast_momentum ?? 0
@@ -540,22 +645,19 @@ export default function ForecastChart({ forecast, ohlcvData, setOhlcvData, order
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mouseleave', handleMouseLeave)
 
-    // ── Animate the pulsing live-price dot during likely market hours (UTC) ──
-    const nowHour = new Date().getUTCHours()
-    if (nowHour >= 6 && nowHour <= 21) {
-      const animate = () => {
-        drawChart()
-        animFrameRef.current = requestAnimationFrame(animate)
-      }
+    // ── Animate the pulsing live-price dot (gold trades 23/5 — always on) ──────
+    const animate = () => {
+      drawChart()
       animFrameRef.current = requestAnimationFrame(animate)
     }
+    animFrameRef.current = requestAnimationFrame(animate)
 
     return () => {
       canvas.removeEventListener('mousemove', handleMouseMove)
       canvas.removeEventListener('mouseleave', handleMouseLeave)
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
-  }, [ohlcvData, orderFlow, forecast, dims, livePrice, multiTf])
+  }, [ohlcvData, orderFlow, forecast, dims, livePrice, multiTf, kronosData, chartTf])
 
   const bull = forecast?.bullish_prob ?? 0
   const bear = forecast?.bearish_prob ?? 0

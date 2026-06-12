@@ -239,6 +239,14 @@ async def get_latest_kronos():
     return results
 
 
+@router.post("/kronos/refresh")
+async def refresh_kronos(background_tasks: BackgroundTasks, request: Request):
+    """Manually trigger a fresh Kronos forecast for all 3 timeframes."""
+    scheduler = request.app.state.scheduler
+    background_tasks.add_task(scheduler._run_kronos_forecast)
+    return {"status": "triggered", "message": "Kronos forecast refresh started"}
+
+
 @router.get("/kronos/accuracy")
 async def get_kronos_accuracy():
     """Directional hit rate per timeframe. 'trusted' becomes True at n≥20
