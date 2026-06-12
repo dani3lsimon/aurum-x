@@ -77,7 +77,7 @@ async def forecast(req: ForecastRequest, authorization: str = Header(None)):
                     x_timestamp=xts,
                     y_timestamp=pd.Series(future),
                     pred_len=req.pred_len,
-                    T=1.0, top_p=0.9, sample_count=1,
+                    T=0.6, top_p=0.9, sample_count=1,
                 )
             )
         except Exception as e:
