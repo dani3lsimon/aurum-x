@@ -391,9 +391,9 @@ class AurumScheduler:
         # 2048 H1  = 85 days of hourly bars,  predict 12 bars = 12h ahead
         # 2048 H4  = 341 days of 4h bars,     predict 6 bars  = 24h ahead
         TF_MAP = {
-            '15min': ('M15', 512, 8),
-            '1h':    ('H1',  512, 8),
-            '4h':    ('H4',  512, 8),
+            '15min': ('M15', 200, 8),
+            '1h':    ('H1',  200, 8),
+            '4h':    ('H4',  200, 8),
         }
         for tf_key, (granularity, n_candles, pred_len) in TF_MAP.items():
             try:
