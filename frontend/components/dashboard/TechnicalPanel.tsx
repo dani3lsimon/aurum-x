@@ -125,7 +125,7 @@ export default function TechnicalPanel() {
 
   // WebSocket: listen for smc_change events broadcast by the backend monitor
   useEffect(() => {
-    const WS_URL = (process.env.NEXT_PUBLIC_WS_URL || BACKEND.replace(/^http/, 'ws')) + '/ws'
+    const WS_URL = process.env.NEXT_PUBLIC_WS_URL || (BACKEND.replace(/^http/, 'ws') + '/ws')
     let ws: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout>
 
