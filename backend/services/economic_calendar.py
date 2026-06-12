@@ -1,76 +1,124 @@
+"""
+Economic calendar via ForexFactory's public JSON feed.
+No API key required — uses nfs.faireconomy.media which serves
+the same data as the ForexFactory calendar page.
+httpx is already in requirements.txt; no new dependencies needed.
+"""
 import asyncio
+import re
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
-# Events that directly move gold — highlighted for traders
+FF_BASE = "https://nfs.faireconomy.media"
+
+IMPACT_MAP = {"High": "high", "Medium": "medium", "Low": "low", "Holiday": "low"}
+
 GOLD_MOVERS = {
     "nonfarm payrolls", "cpi", "pce", "fed", "fomc", "interest rate",
     "gdp", "unemployment", "inflation", "ism", "pmi", "retail sales",
-    "jolts", "jobless claims", "treasury", "durable goods",
-    "consumer confidence", "housing starts", "industrial production",
-    "michigan", "sentiment", "eci", "core", "trade balance",
-    "ats", "average hourly", "labor", "wages",
+    "jolts", "jobless claims", "durable goods", "consumer confidence",
+    "housing starts", "industrial production", "michigan", "sentiment",
+    "trade balance", "average hourly", "labor", "wages", "core",
+    "treasury", "debt", "deficit", "reserve",
 }
 
 
-def _is_gold_relevant(event_name: str) -> bool:
-    name = event_name.lower()
-    return any(kw in name for kw in GOLD_MOVERS)
+def _is_gold_relevant(title: str) -> bool:
+    t = title.lower()
+    return any(kw in t for kw in GOLD_MOVERS)
 
 
-def _fetch_sync(days_ahead: int) -> List[Dict]:
+def _parse_dt(date_str: str, time_str: str) -> datetime | None:
     """
-    Synchronous ForexFactory scrape via the economic-calendar library.
-    Called inside run_in_executor so it never blocks the event loop.
+    ForexFactory format:
+      date: "06-13-2025" (MM-DD-YYYY)
+      time: "8:30am" | "12:00pm" | "All Day" | "Tentative" | ""
+    Returns a UTC-aware datetime or None on parse failure.
     """
-    from economic_calendar import EconomicCalendar
+    try:
+        dt_date = datetime.strptime(date_str.strip(), "%m-%d-%Y").date()
+    except ValueError:
+        return None
 
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(days=days_ahead)
+    t = time_str.strip().lower()
+    h, m = 0, 0
+    if t not in ("", "all day", "tentative"):
+        match = re.match(r"(\d{1,2}):(\d{2})\s*(am|pm)", t)
+        if match:
+            h, m, ampm = int(match.group(1)), int(match.group(2)), match.group(3)
+            if ampm == "pm" and h != 12:
+                h += 12
+            elif ampm == "am" and h == 12:
+                h = 0
 
-    cal    = EconomicCalendar()
-    events = cal.get_events(now, end)
+    return datetime(dt_date.year, dt_date.month, dt_date.day, h, m, tzinfo=timezone.utc)
 
-    result = []
-    for e in events:
-        if e.impact.lower() not in ("medium", "high"):
-            continue
 
-        # Combine date + time into a single UTC ISO timestamp
-        try:
-            event_dt = datetime(
-                e.date.year, e.date.month, e.date.day,
-                e.time.hour if e.time else 0,
-                e.time.minute if e.time else 0,
-                tzinfo=timezone.utc,
-            )
-        except Exception:
-            continue
+def _blank(val) -> bool:
+    return val in (None, "", "—", "-")
 
-        result.append({
-            "date":          event_dt.isoformat(),
-            "country":       e.country  or "",
-            "currency":      e.currency or "",
-            "event":         e.event    or "",
-            "impact":        e.impact.lower(),
-            "actual":        e.actual   if e.actual   not in (None, "") else None,
-            "forecast":      e.forecast if e.forecast not in (None, "") else None,
-            "previous":      e.previous if e.previous not in (None, "") else None,
-            "gold_relevant": _is_gold_relevant(e.event or ""),
-        })
 
-    result.sort(key=lambda x: x["date"])
-    logger.info(f"[economic_calendar] scraped {len(result)} medium/high-impact events")
-    return result
+async def _get_week(client: httpx.AsyncClient, tag: str) -> list:
+    try:
+        r = await client.get(f"{FF_BASE}/ff_calendar_{tag}.json", timeout=12)
+        r.raise_for_status()
+        return r.json()
+    except Exception as exc:
+        logger.warning(f"[economic_calendar] {tag} fetch failed: {exc}")
+        return []
 
 
 async def fetch_economic_events(days_ahead: int = 7) -> List[Dict]:
     """
-    Async wrapper — runs the synchronous ForexFactory scrape in a thread pool
-    so it never blocks the FastAPI event loop.
+    Returns medium + high impact events in the next `days_ahead` days,
+    sorted by datetime ascending. Each event has a gold_relevant flag.
     """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _fetch_sync, days_ahead)
+    now     = datetime.now(timezone.utc)
+    cutoff  = now + timedelta(days=days_ahead)
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; AurumX/1.0)"}
+    async with httpx.AsyncClient(headers=headers, timeout=15) as client:
+        this_week, next_week = await asyncio.gather(
+            _get_week(client, "thisweek"),
+            _get_week(client, "nextweek"),
+        )
+
+    result: List[Dict] = []
+    seen:   set        = set()
+
+    for raw in (this_week + next_week):
+        impact = IMPACT_MAP.get(raw.get("impact", ""), "")
+        if impact not in ("medium", "high"):
+            continue
+
+        dt = _parse_dt(raw.get("date", ""), raw.get("time", ""))
+        if dt is None:
+            continue
+        if dt < now - timedelta(minutes=5) or dt > cutoff:
+            continue
+
+        key = (dt.isoformat(), raw.get("title", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        result.append({
+            "date":          dt.isoformat(),
+            "country":       raw.get("country", ""),
+            "currency":      raw.get("country", ""),   # FF uses country as the currency code
+            "event":         raw.get("title", ""),
+            "impact":        impact,
+            "actual":        None if _blank(raw.get("actual"))   else raw.get("actual"),
+            "forecast":      None if _blank(raw.get("forecast")) else raw.get("forecast"),
+            "previous":      None if _blank(raw.get("previous")) else raw.get("previous"),
+            "gold_relevant": _is_gold_relevant(raw.get("title", "")),
+        })
+
+    result.sort(key=lambda x: x["date"])
+    logger.info(f"[economic_calendar] {len(result)} medium/high events over next {days_ahead} days")
+    return result
