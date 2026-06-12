@@ -15,12 +15,12 @@ TOKEN = os.environ.get('KRONOS_AUTH_TOKEN', 'change-me')
 logger.info('Loading Kronos-mini...')
 tokenizer = KronosTokenizer.from_pretrained('NeoQuasar/Kronos-Tokenizer-2k')
 model     = Kronos.from_pretrained('NeoQuasar/Kronos-mini')
-predictor = KronosPredictor(model, tokenizer, device='cpu', max_context=2048)
+predictor = KronosPredictor(model, tokenizer, device='cpu', max_context=512)
 logger.info('Kronos-mini loaded — ready')
 
 app = FastAPI(title='Kronos Forecast Service')
 
-FREQ_MAP = {'15min': '15min', '1h': '1H', '4h': '4H'}
+FREQ_MAP = {'15min': '15min', '1h': '1h', '4h': '4h'}
 
 
 class ForecastRequest(BaseModel):
