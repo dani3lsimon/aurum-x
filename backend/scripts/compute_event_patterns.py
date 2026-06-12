@@ -63,6 +63,11 @@ EVENT_TYPE_RULES: list[tuple[str, list[str], int]] = [
     ("ISM Manufacturing",["ism manufacturing"],                          106),
     ("ISM Services",     ["ism services", "ism non-manufacturing"],      244),
     ("Jobless Claims",   ["initial jobless", "unemployment claims"],     103),
+    ("Michigan Sentiment",["michigan", "uom", "consumer sentiment", "consumer confidence"],  293),
+    ("Durable Goods",    ["durable goods"],                                                    84),
+    ("JOLTS",            ["jolts", "job openings"],                                           238),
+    ("Housing Starts",   ["housing starts", "building permits"],                               17),
+    ("Trade Balance",    ["trade balance", "trade deficit"],                                   125),
 ]
 
 FRED_RELEASES = {label: rid for label, _, rid in EVENT_TYPE_RULES}

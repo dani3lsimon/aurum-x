@@ -49,6 +49,11 @@ const EVENT_TYPE_RULES: Array<[string, string[]]> = [
   ['ISM Manufacturing',['ism manufacturing']],
   ['ISM Services',     ['ism services', 'ism non-manufacturing']],
   ['Jobless Claims',   ['initial jobless', 'unemployment claims']],
+  ['Michigan Sentiment',['michigan', 'uom', 'consumer sentiment', 'consumer confidence']],
+  ['Durable Goods',    ['durable goods']],
+  ['JOLTS',            ['jolts', 'job openings']],
+  ['Housing Starts',   ['housing starts', 'building permits']],
+  ['Trade Balance',    ['trade balance', 'trade deficit']],
 ]
 
 function normalizeEventType(name: string): string | null {
