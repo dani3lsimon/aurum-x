@@ -383,28 +383,150 @@ async def get_event_patterns():
 
 
 @router.get("/signal-history/export.csv")
-async def export_signal_history_csv(limit: int = 1000, timeframe: str | None = None):
-    """Download the full signal journal as CSV for offline analysis."""
+async def export_signal_history_csv(
+    limit: int = 1000,
+    timeframe: str | None = None,
+    starting_balance: float = 10000.0,
+):
+    """Download signal journal as CSV shaped for the institutional dashboard.
+
+    Field mapping applied:
+      trade_id        ← signal_id
+      exit_time       ← closed_time
+      exit_price      ← entry_price + realized_pnl_pts  (approximation for closed rows)
+      direction       ← long→BUY  /  short→SELL  (uppercase)
+      result          ← WIN / LOSS derived from result_label
+      pnl             ← realized_pnl_pts
+      pips            ← realized_pnl_pts  (gold moves in $/oz)
+      duration        ← closed_time - entry_time  (computed)
+      signal_source   ← "AURUM-X"  (hardcoded)
+      pattern         ← conviction
+      confidence      ← edge_strength
+      risk_percentage ← risk_pct
+      take_profit     ← tp1_price
+      symbol          ← "XAUUSD"
+      balance_before  ← running balance before each closed trade
+      balance_after   ← running balance after each closed trade
+      position_size   ← risk_usd / risk_distance  (when available, else risk_usd)
+    """
     from fastapi.responses import StreamingResponse
     from services.signal_journal import get_signal_history
+    from datetime import datetime, timezone
     import csv, io
-    rows = await get_signal_history(limit=limit, timeframe=timeframe) or []
-    preferred = [
-        "signal_id", "timeframe", "direction", "conviction",
-        "entry_time", "entry_price", "stop_loss",
-        "tp1_price", "tp2_price", "tp3_price",
-        "status", "result_label", "outcome_class",
-        "realized_pnl_pts", "realized_r", "edge_strength", "closed_time",
+
+    raw = await get_signal_history(limit=limit, timeframe=timeframe) or []
+
+    # ── Sort chronologically so running balance is meaningful ─────────────
+    def _ts(r):
+        v = r.get("entry_time") or ""
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    raw.sort(key=_ts)
+
+    # ── Running balance (only accumulates on closed/non-open rows) ────────
+    balance = starting_balance
+
+    fieldnames = [
+        "trade_id", "entry_time", "exit_time", "entry_price", "exit_price",
+        "direction", "result", "pnl", "duration", "signal_source", "pattern",
+        "confidence", "position_size", "balance_before", "balance_after",
+        "risk_percentage", "stop_loss", "take_profit", "symbol", "pips",
+        "timeframe", "conviction", "edge_strength", "realized_r",
+        "tp2_price", "tp3_price", "status", "result_label",
     ]
-    all_keys: set = set()
-    for r in rows:
-        all_keys.update(r.keys())
-    fieldnames = [k for k in preferred if k in all_keys] + sorted(all_keys - set(preferred))
+
+    def _direction(raw_dir: str) -> str:
+        d = (raw_dir or "").lower()
+        return "BUY" if d == "long" else "SELL" if d == "short" else (raw_dir or "").upper()
+
+    def _result(label: str, status: str) -> str:
+        l = (label or "").upper()
+        if any(x in l for x in ("TP", "PROFIT", "WIN")):
+            return "WIN"
+        if any(x in l for x in ("LOSS", "SL_HIT", "EXPIRED_LOSS")):
+            return "LOSS"
+        return ""   # OPEN or ambiguous — dashboard will skip blank result gracefully
+
+    def _duration(entry: str, closed: str) -> str:
+        if not entry or not closed:
+            return ""
+        try:
+            e = datetime.fromisoformat(entry.replace("Z", "+00:00"))
+            c = datetime.fromisoformat(closed.replace("Z", "+00:00"))
+            return str(c - e)
+        except Exception:
+            return ""
+
+    def _position_size(r: dict):
+        risk_usd  = r.get("risk_usd")
+        risk_dist = r.get("risk_distance")
+        if risk_usd and risk_dist and float(risk_dist) > 0:
+            return round(float(risk_usd) / float(risk_dist), 4)
+        return risk_usd or ""
+
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
-    for r in rows:
-        writer.writerow(r)
+
+    for r in raw:
+        pnl_pts    = r.get("realized_pnl_pts")
+        pnl_float  = float(pnl_pts) if pnl_pts is not None else None
+        entry_price = r.get("entry_price")
+        status      = (r.get("status") or "").upper()
+        closed      = r.get("closed_time") or ""
+
+        # exit_price approximation: entry ± pnl (only meaningful when closed)
+        if entry_price is not None and pnl_float is not None and status != "OPEN":
+            try:
+                exit_price = round(float(entry_price) + pnl_float, 2)
+            except Exception:
+                exit_price = ""
+        else:
+            exit_price = ""
+
+        # Running balance — only update on closed signals with a real pnl
+        bal_before = ""
+        bal_after  = ""
+        if status != "OPEN" and pnl_float is not None:
+            bal_before = round(balance, 2)
+            balance    = round(balance + pnl_float, 2)
+            bal_after  = balance
+
+        writer.writerow({
+            "trade_id":       r.get("signal_id", ""),
+            "entry_time":     r.get("entry_time", ""),
+            "exit_time":      closed,
+            "entry_price":    entry_price or "",
+            "exit_price":     exit_price,
+            "direction":      _direction(r.get("direction", "")),
+            "result":         _result(r.get("result_label", ""), status),
+            "pnl":            pnl_float if pnl_float is not None else "",
+            "duration":       _duration(r.get("entry_time", ""), closed),
+            "signal_source":  "AURUM-X",
+            "pattern":        r.get("conviction", ""),
+            "confidence":     r.get("edge_strength", ""),
+            "position_size":  _position_size(r),
+            "balance_before": bal_before,
+            "balance_after":  bal_after,
+            "risk_percentage":r.get("risk_pct", ""),
+            "stop_loss":      r.get("stop_loss", ""),
+            "take_profit":    r.get("tp1_price", ""),
+            "symbol":         "XAUUSD",
+            "pips":           pnl_float if pnl_float is not None else "",
+            # Pass-through extras for AURUM-X own analysis
+            "timeframe":      r.get("timeframe", ""),
+            "conviction":     r.get("conviction", ""),
+            "edge_strength":  r.get("edge_strength", ""),
+            "realized_r":     r.get("realized_r", ""),
+            "tp2_price":      r.get("tp2_price", ""),
+            "tp3_price":      r.get("tp3_price", ""),
+            "status":         status,
+            "result_label":   r.get("result_label", ""),
+        })
+
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),
