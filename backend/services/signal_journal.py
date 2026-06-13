@@ -341,3 +341,114 @@ async def get_performance_stats() -> dict:
         "profit_factor":  round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else 999,
         "by_timeframe":   by_tf,
     }
+
+
+async def get_equity_curve(starting_capital: float = 10000.0, timeframe: str | None = None) -> dict:
+    """Chronological equity curve from realized_pnl_usd + monthly P&L breakdown."""
+    sb = get_supabase()
+    query = sb.table("signal_history").select("*").neq("status", "OPEN").order("closed_time")
+    if timeframe:
+        query = query.eq("timeframe", timeframe)
+    data = query.execute().data or []
+
+    points = []
+    equity  = starting_capital
+    cum_pts = 0.0
+    peak    = starting_capital
+    max_dd  = 0.0
+    monthly: dict = {}
+
+    for s in data:
+        if not s.get("closed_time"):
+            continue
+        pnl_usd = float(s.get("realized_pnl_usd") or 0)
+        pnl_pts = float(s.get("realized_pnl_pts") or 0)
+        equity  += pnl_usd
+        cum_pts += pnl_pts
+        peak     = max(peak, equity)
+        dd       = (peak - equity) / peak * 100 if peak > 0 else 0
+        max_dd   = max(max_dd, dd)
+
+        points.append({
+            "signal_id":    s.get("signal_id"),
+            "closed_time":  s.get("closed_time"),
+            "timeframe":    s.get("timeframe"),
+            "pnl_usd":      round(pnl_usd, 2),
+            "pnl_pts":      round(pnl_pts, 2),
+            "equity":       round(equity, 2),
+            "cum_pts":      round(cum_pts, 2),
+            "drawdown_pct": round(dd, 2),
+        })
+
+        month_key = s["closed_time"][:7]
+        m = monthly.setdefault(month_key, {"month": month_key, "pnl_usd": 0.0, "trades": 0, "wins": 0})
+        m["pnl_usd"] += pnl_usd
+        m["trades"]  += 1
+        if (s.get("outcome_class") == "WIN") or (float(s.get("realized_r") or 0) > 0):
+            m["wins"] += 1
+
+    monthly_list = []
+    for m in sorted(monthly.values(), key=lambda x: x["month"]):
+        m["pnl_usd"] = round(m["pnl_usd"], 2)
+        m["win_pct"] = round(m["wins"] / m["trades"] * 100, 1) if m["trades"] else 0
+        monthly_list.append(m)
+
+    return {
+        "starting_capital": starting_capital,
+        "final_equity":     round(equity, 2),
+        "final_cum_pts":    round(cum_pts, 2),
+        "max_drawdown_pct": round(max_dd, 2),
+        "points":           points,
+        "monthly":          monthly_list,
+    }
+
+
+async def get_condition_stats(timeframe: str | None = None) -> list:
+    """Win rate / avg R per (condition, value) from conditions_snapshot JSON."""
+    from collections import defaultdict
+    sb = get_supabase()
+    query = sb.table("signal_history").select(
+        "direction, outcome_class, realized_r, realized_pnl_pts, conditions_snapshot"
+    ).neq("status", "OPEN")
+    if timeframe:
+        query = query.eq("timeframe", timeframe)
+    data = query.execute().data or []
+
+    stats: dict = defaultdict(lambda: {"total": 0, "wins": 0, "sum_r": 0.0, "sum_pnl": 0.0})
+
+    for s in data:
+        snap       = s.get("conditions_snapshot") or {}
+        conditions = snap.get("conditions") or {}
+        if not conditions:
+            continue
+        direction = s.get("direction")
+        is_win    = (s.get("outcome_class") == "WIN") or (float(s.get("realized_r") or 0) > 0)
+        r_val     = float(s.get("realized_r") or 0)
+        pnl_val   = float(s.get("realized_pnl_pts") or 0)
+
+        for cond_name, cond in conditions.items():
+            met = cond.get("long_met") if direction == "long" else cond.get("short_met")
+            if not met:
+                continue
+            key = (cond_name, str(cond.get("value", "")))
+            st = stats[key]
+            st["total"]   += 1
+            st["wins"]    += 1 if is_win else 0
+            st["sum_r"]   += r_val
+            st["sum_pnl"] += pnl_val
+
+    result = []
+    for (cond_name, value), st in stats.items():
+        if st["total"] == 0:
+            continue
+        result.append({
+            "condition":   cond_name,
+            "value":       value,
+            "signals":     st["total"],
+            "win_pct":     round(st["wins"] / st["total"] * 100, 1),
+            "avg_r":       round(st["sum_r"] / st["total"], 3),
+            "avg_pnl_pts": round(st["sum_pnl"] / st["total"], 2),
+        })
+
+    result.sort(key=lambda x: x["avg_r"], reverse=True)
+    return result

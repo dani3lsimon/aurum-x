@@ -14,8 +14,10 @@ import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 import { SignalJournal } from '@/components/dashboard/SignalJournal'
 import TechnicalPanel           from '@/components/dashboard/TechnicalPanel'
 import EconomicCalendarPanel   from '@/components/dashboard/EconomicCalendarPanel'
-import TradeCard       from '@/components/dashboard/TradeCard'
-import MacroBiasGauge from '@/components/dashboard/MacroBiasGauge'
+import TradeCard                from '@/components/dashboard/TradeCard'
+import MacroBiasGauge          from '@/components/dashboard/MacroBiasGauge'
+import EquityCurvePanel        from '@/components/dashboard/EquityCurvePanel'
+import ConditionPerformancePanel from '@/components/dashboard/ConditionPerformancePanel'
 
 type TabId = 'live' | 'chart' | 'analysis' | 'journal' | 'calendar'
 
@@ -49,8 +51,18 @@ export default function Page() {
     tradeCard, macroBias,
   } = useForecast()
 
-  const [toast, setToast]               = useState<string | null>(null)
+  const [toast,         setToast]        = useState<string | null>(null)
+  const [equityPoints,  setEquityPoints] = useState<{ signal_id: string; equity: number }[]>([])
   const prevRefreshing                  = useRef(false)
+
+  // Fetch equity curve points once on mount for the journal equity column
+  useEffect(() => {
+    const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+    fetch(`${BACKEND}/forecast/signal-history/equity-curve`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.points) setEquityPoints(d.points) })
+      .catch(() => {})
+  }, [])
 
   const [activeTab, setActiveTab] = useState<TabId>('live')
   // Restore persisted tab from localStorage after mount (avoids SSR/CSR mismatch)
@@ -372,7 +384,23 @@ export default function Page() {
 
       {/* ── Tab 4: TRACK RECORD ──────────────────────────────────────────── */}
       {activeTab === 'journal' && (
-        <SignalJournal livePrice={liveGoldPrice || forecast?.gold_price || 0} />
+        <div style={{ padding: '12px 16px', height: 'calc(100vh - 110px)', display: 'flex', flexDirection: 'column', gap: '8px', overflow: 'hidden' }}>
+          {/* A: Equity curve */}
+          <div className="aurum-card" style={{ flexShrink: 0 }}>
+            <EquityCurvePanel />
+          </div>
+          {/* B: Condition performance */}
+          <div className="aurum-card" style={{ flexShrink: 0, maxHeight: '220px', overflow: 'auto' }}>
+            <ConditionPerformancePanel />
+          </div>
+          {/* C: Enhanced signal journal */}
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <SignalJournal
+              livePrice={liveGoldPrice || forecast?.gold_price || 0}
+              equityPoints={equityPoints}
+            />
+          </div>
+        </div>
       )}
 
       {/* ── Tab 5: ECONOMIC CALENDAR ─────────────────────────────────────── */}

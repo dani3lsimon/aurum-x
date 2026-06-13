@@ -382,6 +382,20 @@ async def get_event_patterns():
         return {"status": "error", "patterns": [], "message": str(exc)}
 
 
+@router.get("/signal-history/equity-curve")
+async def get_equity_curve_endpoint(starting_capital: float = 10000.0, timeframe: str | None = None):
+    """Chronological equity curve + drawdown + monthly P&L for the Track Record tab."""
+    from services.signal_journal import get_equity_curve
+    return await get_equity_curve(starting_capital=starting_capital, timeframe=timeframe)
+
+
+@router.get("/signal-history/condition-stats")
+async def get_condition_stats_endpoint(timeframe: str | None = None):
+    """Win rate / avg R per (condition, value) pair from conditions_snapshot."""
+    from services.signal_journal import get_condition_stats
+    return await get_condition_stats(timeframe=timeframe)
+
+
 @router.get("/signal-history/export.csv")
 async def export_signal_history_csv(
     limit: int = 1000,
