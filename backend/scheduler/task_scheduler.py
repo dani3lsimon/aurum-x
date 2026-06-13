@@ -383,6 +383,9 @@ class AurumScheduler:
             await TechnicalFusionAgent().run()
         except Exception as e:
             logger.error(f"Technical fusion scheduler error: {e}")
+        # Always rebuild trade card immediately after fusion completes so
+        # the card reads the freshly written technical_fusion_signal cache.
+        await self._run_trade_card()
 
     async def _run_trade_card(self):
         """Builds the consolidated Trade Card from latest cached fusion /
@@ -402,7 +405,7 @@ class AurumScheduler:
             config = {"base_risk_pct": float(os.getenv("BASE_RISK_PCT", "0.5"))}
             card = build_trade_card(fusion, multi_tf, short_score, mbs, config)
 
-            await cache_set("trade_card", card, ttl_seconds=120)
+            await cache_set("trade_card", card, ttl_seconds=420)  # 7 min > 5-min interval
             await ws_manager.broadcast({"type": "trade_card", "data": card, "mbs": mbs})
         except Exception as e:
             logger.error(f"Trade card error: {e}")

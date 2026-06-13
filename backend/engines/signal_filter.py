@@ -13,20 +13,35 @@ def build_trade_card(fusion: dict, multi_tf: dict, short_score: dict,
     multi_tf    = multi_tf or {}
     short_score = short_score or {}
 
-    direction = fusion.get("direction")            # "LONG" / "SHORT" / "NEUTRAL"
-    quality   = (fusion.get("setup_quality") or "NO_TRADE").upper()
-    prob      = fusion.get("probability", 0) or 0
+    # ── Determine primary direction source ───────────────────────────
+    # Prefer fusion when it has a directional signal.  Fall back to
+    # multi-TF when fusion is absent, neutral, or NO_TRADE so the card
+    # always reflects the best available signal.
+    fusion_dir = (fusion.get("direction") or "").upper()
+    mtf_dir_raw = (multi_tf.get("best_direction") or "").lower()
+    mtf_dir     = "LONG" if mtf_dir_raw == "long" else ("SHORT" if mtf_dir_raw == "short" else "")
+
+    fusion_quality = (fusion.get("setup_quality") or "NO_TRADE").upper()
+    fusion_prob    = fusion.get("probability", 0) or 0
+
+    # Choose source
+    using_fusion = bool(fusion_dir and fusion_dir not in ("NEUTRAL", "") and
+                        fusion_quality != "NO_TRADE" and fusion_prob >= 40)
+
+    if using_fusion:
+        direction = fusion_dir
+        quality   = fusion_quality
+        prob      = fusion_prob
+    elif mtf_dir:
+        # Multi-TF fallback — signal exists even though fusion is absent/neutral
+        direction = mtf_dir
+        quality   = "SCALP"
+        prob      = int(multi_tf.get("edge_strength", 0) or 0)  # use edge as proxy
+    else:
+        return None
+
+    # FILTER: pre-conditions (news / spread / daily limits)
     pre_conditions_pass = short_score.get("pre_conditions_pass", True)
-
-    # FILTER 1: must have a direction
-    if not direction or direction == "NEUTRAL":
-        return None
-
-    # FILTER 2: fusion must approve
-    if quality == "NO_TRADE" or prob < 40:
-        return None
-
-    # FILTER 3: pre-conditions (news / spread / daily limits)
     if not pre_conditions_pass:
         return None
 

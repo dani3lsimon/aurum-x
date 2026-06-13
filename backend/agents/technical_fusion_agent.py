@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 CACHE_KEY = "technical_fusion_signal"
-CACHE_TTL = 60   # 1 min — fresh enough for live trading
+CACHE_TTL = 360  # 6 min — outlasts the 5-min scheduler interval
 
 
 def _validate_entry_zone(result: dict, live_price: float) -> dict:
