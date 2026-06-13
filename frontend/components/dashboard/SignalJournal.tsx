@@ -129,6 +129,13 @@ export function SignalJournal({ livePrice }: { livePrice: number }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
+        <a
+          href={`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/forecast/signal-history/export.csv${filter !== 'all' ? `?timeframe=${filter}` : ''}`}
+          download
+          style={{ fontSize: '11px', padding: '5px 10px', borderRadius: '4px', border: '1px solid rgba(255,80,0,0.2)', color: '#8a92ab', textDecoration: 'none', fontFamily: 'JetBrains Mono, monospace', cursor: 'pointer' }}
+        >
+          ⬇ CSV
+        </a>
         <button onClick={fetchData} style={{ padding: '5px 14px', fontSize: '11px', background: 'transparent', border: '1px solid rgba(255,80,0,0.2)', color: '#4a5068', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>
           ⟳ REFRESH
         </button>

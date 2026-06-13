@@ -14,6 +14,8 @@ import { IntelligenceBrief } from '@/components/dashboard/IntelligenceBrief'
 import { SignalJournal } from '@/components/dashboard/SignalJournal'
 import TechnicalPanel           from '@/components/dashboard/TechnicalPanel'
 import EconomicCalendarPanel   from '@/components/dashboard/EconomicCalendarPanel'
+import TradeCard       from '@/components/dashboard/TradeCard'
+import MacroBiasGauge from '@/components/dashboard/MacroBiasGauge'
 
 type TabId = 'live' | 'chart' | 'analysis' | 'journal' | 'calendar'
 
@@ -44,6 +46,7 @@ export default function Page() {
     liveGoldPrice, priceChange, wsStatus,
     lastTickPrice, signalChanged, signalChangedAt,
     liveRanges, vixPrice,
+    tradeCard, macroBias,
   } = useForecast()
 
   const [toast, setToast]               = useState<string | null>(null)
@@ -253,11 +256,17 @@ export default function Page() {
           padding: '12px 16px',
           height: 'calc(100vh - 110px)',
           display: 'grid',
-          gridTemplateRows: 'auto 1fr',
+          gridTemplateRows: 'auto auto 1fr',
           gridTemplateColumns: '1fr',
           gap: '8px',
           overflow: 'hidden',
         }}>
+
+          {/* Row 0: Trade Card + Macro Bias — the single decision, first thing visible */}
+          <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '8px', maxHeight: '160px' }}>
+            <TradeCard tradeCard={tradeCard} />
+            <MacroBiasGauge mbs={macroBias} />
+          </div>
 
           {/* Row 1: Probabilities */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>

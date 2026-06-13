@@ -12,6 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 import logging
+import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,11 @@ class AurumScheduler:
         # for the AI call. Cache is 60s; scheduler keeps it warm.
         self.scheduler.add_job(self._run_technical_fusion, IntervalTrigger(minutes=5),
                                id="technical_fusion", replace_existing=True)
+
+        # Trade Card — synthesizes fusion + multi-TF + short-score + MBS into
+        # one consolidated "next trade" decision. Runs every 5 min after fusion.
+        self.scheduler.add_job(self._run_trade_card, IntervalTrigger(minutes=5),
+                               id="trade_card", replace_existing=True)
 
         # SMC change monitor — every 30 seconds, zero cost (just diffs cached results)
         self.scheduler.add_job(self._run_smc_monitor, IntervalTrigger(seconds=30),
@@ -377,6 +383,29 @@ class AurumScheduler:
             await TechnicalFusionAgent().run()
         except Exception as e:
             logger.error(f"Technical fusion scheduler error: {e}")
+
+    async def _run_trade_card(self):
+        """Builds the consolidated Trade Card from latest cached fusion /
+        multi-TF / short-score results + macro bias, caches it, broadcasts
+        {'type': 'trade_card'}. Runs every 5 minutes, right after fusion."""
+        try:
+            from services.redis_service import cache_get, cache_set
+            from engines.signal_filter import build_trade_card
+            from engines.macro_bias import get_macro_bias
+            from services.websocket_manager import ws_manager
+
+            fusion      = await cache_get("technical_fusion_signal")
+            multi_tf    = await cache_get("multi_tf_signal")
+            short_score = await cache_get("short_score_signal")
+            mbs         = await get_macro_bias()
+
+            config = {"base_risk_pct": float(os.getenv("BASE_RISK_PCT", "0.5"))}
+            card = build_trade_card(fusion, multi_tf, short_score, mbs, config)
+
+            await cache_set("trade_card", card, ttl_seconds=120)
+            await ws_manager.broadcast({"type": "trade_card", "data": card, "mbs": mbs})
+        except Exception as e:
+            logger.error(f"Trade card error: {e}")
 
     async def _run_kronos_forecast(self):
         """Fetch 2048 OANDA candles per timeframe and run Kronos inference.

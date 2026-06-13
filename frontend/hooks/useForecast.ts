@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, ShortScore, WSMessage, OHLCVBar, MultiTfSignal, OrderFlowData } from '@/lib/types'
+import { Forecast, AgentScore, Scenario, Alert, EconomicRelease, ShortScore, WSMessage, OHLCVBar, MultiTfSignal, OrderFlowData, TradeCard } from '@/lib/types'
 import { useWebSocket } from './useWebSocket'
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -16,6 +16,8 @@ export function useForecast() {
   const [ohlcvData,    setOhlcvData]    = useState<OHLCVBar[]>([])
   const [multiTf,      setMultiTf]      = useState<MultiTfSignal | null>(null)
   const [orderFlow,    setOrderFlow]    = useState<OrderFlowData | null>(null)
+  const [tradeCard,    setTradeCard]    = useState<TradeCard | null>(null)
+  const [macroBias,    setMacroBias]    = useState<number>(0)
   const [chartTf,      setChartTf]      = useState<'15m' | '1h' | '4h' | '1d'>('1h')
   const [loading,      setLoading]      = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -268,6 +270,14 @@ export function useForecast() {
     return () => clearInterval(interval)
   }, [])
 
+  // Fetch the trade card on mount
+  useEffect(() => {
+    fetch(`${BACKEND}/forecast/trade-card`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && typeof d === 'object') setTradeCard(d as TradeCard) })
+      .catch(() => {})
+  }, [])
+
   // Fetch the multi-timeframe signal on mount
   useEffect(() => {
     fetch(`${BACKEND}/forecast/multi-tf`)
@@ -367,6 +377,11 @@ export function useForecast() {
           setMultiTf(msg.data as MultiTfSignal)
         }
         break
+
+      case 'trade_card':
+        setTradeCard((msg.data ?? null) as TradeCard | null)
+        if (typeof msg.mbs === 'number') setMacroBias(msg.mbs)
+        break
     }
   }, [lastMessage])
 
@@ -443,5 +458,6 @@ export function useForecast() {
     lastTickPrice, tickBufferRef,
     signalChanged, signalChangedAt,
     liveRanges, vixPrice,
+    tradeCard, macroBias,
   }
 }

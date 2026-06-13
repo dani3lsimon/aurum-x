@@ -666,6 +666,8 @@ class ShortScoreEngine:
 
         await self._persist(result, current_price, risk_sentiment, forecast, sb)
         await ws_manager.broadcast({"type": "short_score_update", "data": result})
+        from services.redis_service import cache_set as _cache_set
+        await _cache_set("short_score_signal", result, ttl_seconds=120)
 
         logger.info(
             f"[confluence] LONG {long_pct}% | SHORT {short_pct}% | {net_signal} | regime={regime} | "

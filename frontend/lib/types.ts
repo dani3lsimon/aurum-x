@@ -214,9 +214,32 @@ export interface ShortScore {
   scalp: boolean
 }
 
+export interface TradeCard {
+  direction: 'LONG' | 'SHORT'
+  conviction: string
+  timeframe: string
+  probability: number
+  edge: number
+  entry_zone: string | number | null
+  invalidation: string | number | null
+  stop_loss: number | string | null
+  target_1: number | string | null
+  target_2: number | string | null
+  risk_pct: number
+  mbs: number
+  macro_note: string
+  reasoning: string
+  timeframe_alignment: string
+  direction_agreement: boolean
+  timestamp: string
+}
+
 export interface WSMessage {
-  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change' | 'initial_state' | 'release_alert' | 'short_score_update' | 'multi_tf_update'
+  type: 'forecast_update' | 'agent_update' | 'alert' | 'regime_change'
+      | 'initial_state' | 'release_alert' | 'short_score_update'
+      | 'multi_tf_update' | 'trade_card'
   data: unknown
+  mbs?: number
 }
 
 // ── Multi-timeframe engine + price-action chart ────────────────────────────

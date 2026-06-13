@@ -209,6 +209,13 @@ async def get_calibration():
     return await compute_calibration()
 
 
+@router.get("/trade-card")
+async def get_trade_card():
+    """Latest consolidated Trade Card (cached, refreshed every 5 min)."""
+    from services.redis_service import cache_get
+    return await cache_get("trade_card")
+
+
 @router.get("/multi-tf")
 async def get_multi_tf_signal():
     """
@@ -373,6 +380,37 @@ async def get_event_patterns():
     except Exception as exc:
         logger.error(f"event-patterns fetch error: {exc}")
         return {"status": "error", "patterns": [], "message": str(exc)}
+
+
+@router.get("/signal-history/export.csv")
+async def export_signal_history_csv(limit: int = 1000, timeframe: str | None = None):
+    """Download the full signal journal as CSV for offline analysis."""
+    from fastapi.responses import StreamingResponse
+    from services.signal_journal import get_signal_history
+    import csv, io
+    rows = await get_signal_history(limit=limit, timeframe=timeframe) or []
+    preferred = [
+        "signal_id", "timeframe", "direction", "conviction",
+        "entry_time", "entry_price", "stop_loss",
+        "tp1_price", "tp2_price", "tp3_price",
+        "status", "result_label", "outcome_class",
+        "realized_pnl_pts", "realized_r", "edge_strength", "closed_time",
+    ]
+    all_keys: set = set()
+    for r in rows:
+        all_keys.update(r.keys())
+    fieldnames = [k for k in preferred if k in all_keys] + sorted(all_keys - set(preferred))
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow(r)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=aurum_signal_history.csv"},
+    )
 
 
 @router.get("/signal-history")
